@@ -1,17 +1,11 @@
 name: build_for_linux
 
 on:
-  workflow_dispatch:
-    inputs:
-      build_type:
-        description: 'Build type (debug or release)'
-        required: true
-        default: 'release'
-  # push:
-  #   branches: [ "main" ]
-  #   tags: [ "*" ]
-  # pull_request:
-  #   branches: [ "main" ]
+  push:
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - "v*" # Push events to matching v*, i.e. v1.0, v20.15.10
+
 
 env:
   CARGO_TERM_COLOR: always
@@ -51,8 +45,7 @@ jobs:
         draft: false
         prerelease: false
 
-    - name: Upload Release Asset (Release)
-      if: ${{ github.event.inputs.build_type == 'release' }}
+    - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,15 +53,4 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./target/release/tiny-http
         asset_name: tiny-http
-        asset_content_type: application/octet-stream
-
-    - name: Upload Release Asset (Debug)
-      if: ${{ github.event.inputs.build_type == 'debug' }}
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./target/debug/tiny-http
-        asset_name: tiny-http-debug
         asset_content_type: application/octet-stream
