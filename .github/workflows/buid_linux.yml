@@ -34,9 +34,8 @@ jobs:
           cargo build
         fi
 
-
     - name: Create Release
       uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: ./target/release/tiny-http
+      with:
+        files: ./target/release/tiny-http
