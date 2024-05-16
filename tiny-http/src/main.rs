@@ -83,6 +83,19 @@ fn generate_directory_listing(path: &Path) -> std::io::Result<String> {
     Ok(html)
 }
 
+/// # 更简单的方式： https://actix.rs/docs/static-files
+/// ```
+/// use actix_files as fs;
+/// use actix_web::{App, HttpServer};
+///
+/// #[actix_web::main]
+/// async fn main() -> std::io::Result<()> {
+///     HttpServer::new(|| App::new().service(fs::Files::new("/static", ".").show_files_listing()))
+///         .bind(("127.0.0.1", 8080))?
+///         .run()
+///         .await
+/// }
+/// ```
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let args = Args::parse();
@@ -93,6 +106,7 @@ async fn main() -> std::io::Result<()> {
     let app_state = AppState {
         base_path: args.base_path,
     };
+
 
     HttpServer::new(move || {
         App::new()
