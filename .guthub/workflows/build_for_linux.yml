@@ -32,6 +32,7 @@ jobs:
         target: x86_64-unknown-linux-gnu
 
     - name: Build
+      id: build
       run: |
         if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
           cargo build --release
@@ -50,7 +51,8 @@ jobs:
         draft: false
         prerelease: false
 
-    - name: Upload Release Asset
+    - name: Upload Release Asset (Release)
+      if: ${{ github.event.inputs.build_type == 'release' }}
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,4 +60,15 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./target/release/tiny-http
         asset_name: tiny-http
+        asset_content_type: application/octet-stream
+
+    - name: Upload Release Asset (Debug)
+      if: ${{ github.event.inputs.build_type == 'debug' }}
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./target/debug/tiny-http
+        asset_name: tiny-http-debug
         asset_content_type: application/octet-stream
