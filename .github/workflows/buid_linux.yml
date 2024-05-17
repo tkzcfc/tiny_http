@@ -28,7 +28,7 @@ jobs:
 
     - name: Build
       id: build
-      run: cargo build --release  --target x86_64-unknown-linux-musl
+      run: cargo build --release --target x86_64-unknown-linux-musl
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
