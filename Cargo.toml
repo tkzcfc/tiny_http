@@ -15,7 +15,7 @@ clap = { version = "4.0", features = ["derive"] }
 panic = "abort"
 lto = true
 codegen-units = 1
-#strip = "debuginfo"
+strip = true        # Strip symbols from binary*
 opt-level = "z"  # 最小化二进制文件大小
 
 [target.x86_64-unknown-linux-musl]
