@@ -10,3 +10,13 @@ tokio = { version = "1", features = ["full"] }
 actix-web = "4"
 actix-files = "0"
 clap = { version = "4.0", features = ["derive"] }
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+#strip = "debuginfo"
+opt-level = "z"  # 最小化二进制文件大小
+
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-C", "target-feature=+crt-static"]
