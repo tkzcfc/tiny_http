@@ -155,6 +155,8 @@ struct UploadUser {
     first_time: String,
     // 最后一次上报时间
     last_time: String,
+    // ip
+    ip: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -172,11 +174,11 @@ struct LogData {
 
 #[post("/api/upload_log")]
 async fn upload_log(
-    _req: HttpRequest,
+    req: HttpRequest,
     data: web::Data<AppState>,
     log_data: web::Json<UploadLogData>,
 ) -> Result<HttpResponse> {
-    // println!("{:?}", _req);
+    // println!("{:?}", req);
     // println!("{:?}", log_data);
 
     match log_data.log_type.as_str() {
@@ -240,6 +242,13 @@ async fn upload_log(
             }
 
             if !is_exists && data.upload_users.len() < 50 {
+                let ip = if let Some(x) = req.connection_info().realip_remote_addr() {
+                    x.to_string()
+                }
+                else {
+                    "unknown".to_string()
+                };
+
                 data.upload_users.push(UploadUser {
                     user: log_data.user.clone(),
                     package: log_data.package.clone(),
@@ -248,6 +257,7 @@ async fn upload_log(
                     count: 1,
                     first_time: now.clone(),
                     last_time: now.clone(),
+                    ip,
                 })
             }
 
