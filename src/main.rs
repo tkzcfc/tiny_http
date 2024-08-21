@@ -304,7 +304,10 @@ async fn main() -> anyhow::Result<()> {
         if save_path.starts_with("./") {
             save_path = (&save_path[2..]).to_string();
         }
-        if let Some(path) = current_dir.join(save_path).to_str() {
+
+        let path = current_dir.join(save_path);
+        std::fs::create_dir_all(&path)?;
+        if let Some(path) = path.to_str() {
             app_state.save_path = path.to_string();
         } else {
             return Err(anyhow!("path '{}' conversion failed", app_state.save_path));
