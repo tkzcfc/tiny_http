@@ -181,93 +181,89 @@ async fn upload_log(
     // println!("{:?}", req);
     // println!("{:?}", log_data);
 
-    match log_data.log_type.as_str() {
-        "error" => {
-            // 计算错误内容哈希值
-            let digest = md5::compute(&log_data.message);
-            let hash_string = format!("{:x}.txt", digest);
+    if log_data.log_type.starts_with("error") {
+        // 计算错误内容哈希值
+        let digest = md5::compute(&log_data.message);
+        let hash_string = format!("{:x}.txt", digest);
 
-            let mut is_new = false;
-            let lock = if let Some(lock) = data.file_lock.read().await.get(&hash_string) {
-                lock.clone()
-            } else {
-                is_new = true;
-                Arc::new(Mutex::new(true))
-            };
+        let mut is_new = false;
+        let lock = if let Some(lock) = data.file_lock.read().await.get(&hash_string) {
+            lock.clone()
+        } else {
+            is_new = true;
+            Arc::new(Mutex::new(true))
+        };
 
-            if is_new {
-                data.file_lock
-                    .write()
-                    .await
-                    .insert(hash_string.clone(), lock.clone());
-            }
-
-            let lock = lock.lock().await;
-            // 保存文件路径
-            let dir_name = Path::new(&data.save_path).join(&log_data.log_type);
-            if !dir_name.exists() || !dir_name.is_dir() {
-                std::fs::create_dir(dir_name.clone())?;
-            }
-            let save_to_file_name = dir_name.join(hash_string.clone());
-
-            let fmt = "%Y-%m-%d %H:%M:%S";
-            let now = Local::now().format(fmt).to_string();
-
-            let mut data = if save_to_file_name.exists() && save_to_file_name.is_file() {
-                serde_json::from_reader(std::fs::File::open(save_to_file_name.clone())?)?
-            } else {
-                LogData {
-                    message: log_data.message.clone(),
-                    upload_users: vec![],
-                    first_time: now.clone(),
-                    last_time: "".to_string(),
-                    total_count: 0,
-                }
-            };
-
-            data.total_count = data.total_count + 1;
-            data.last_time = now.clone();
-
-            let mut is_exists = false;
-            for it in &mut data.upload_users {
-                if it.user == log_data.user
-                    && it.version == log_data.version
-                    && it.nav_url == log_data.nav_url
-                {
-                    it.last_time = now.clone();
-                    it.count = it.count + 1;
-                    is_exists = true;
-                    break;
-                }
-            }
-
-            if !is_exists && data.upload_users.len() < 50 {
-                let ip = if let Some(x) = req.connection_info().realip_remote_addr() {
-                    x.to_string()
-                }
-                else {
-                    "unknown".to_string()
-                };
-
-                data.upload_users.push(UploadUser {
-                    user: log_data.user.clone(),
-                    package: log_data.package.clone(),
-                    nav_url: log_data.nav_url.clone(),
-                    version: log_data.version.clone(),
-                    count: 1,
-                    first_time: now.clone(),
-                    last_time: now.clone(),
-                    ip,
-                })
-            }
-
-            let json_str = serde_json::to_string_pretty(&data)?;
-            let mut file = std::fs::File::create(save_to_file_name)?;
-            file.write_all(json_str.as_bytes())?;
-
-            drop(lock);
+        if is_new {
+            data.file_lock
+                .write()
+                .await
+                .insert(hash_string.clone(), lock.clone());
         }
-        _ => {}
+
+        let lock = lock.lock().await;
+        // 保存文件路径
+        let dir_name = Path::new(&data.save_path).join(&log_data.log_type);
+        if !dir_name.exists() || !dir_name.is_dir() {
+            std::fs::create_dir_all(dir_name.clone())?;
+        }
+        let save_to_file_name = dir_name.join(hash_string.clone());
+
+        let fmt = "%Y-%m-%d %H:%M:%S";
+        let now = Local::now().format(fmt).to_string();
+
+        let mut data = if save_to_file_name.exists() && save_to_file_name.is_file() {
+            serde_json::from_reader(std::fs::File::open(save_to_file_name.clone())?)?
+        } else {
+            LogData {
+                message: log_data.message.clone(),
+                upload_users: vec![],
+                first_time: now.clone(),
+                last_time: "".to_string(),
+                total_count: 0,
+            }
+        };
+
+        data.total_count = data.total_count + 1;
+        data.last_time = now.clone();
+
+        let mut is_exists = false;
+        for it in &mut data.upload_users {
+            if it.user == log_data.user
+                && it.version == log_data.version
+                && it.nav_url == log_data.nav_url
+            {
+                it.last_time = now.clone();
+                it.count = it.count + 1;
+                is_exists = true;
+                break;
+            }
+        }
+
+        if !is_exists && data.upload_users.len() < 50 {
+            let ip = if let Some(x) = req.connection_info().realip_remote_addr() {
+                x.to_string()
+            } else {
+                "unknown".to_string()
+            };
+
+            data.upload_users.push(UploadUser {
+                user: log_data.user.clone(),
+                package: log_data.package.clone(),
+                nav_url: log_data.nav_url.clone(),
+                version: log_data.version.clone(),
+                count: 1,
+                first_time: now.clone(),
+                last_time: now.clone(),
+                ip,
+            })
+        }
+
+        let json_str = serde_json::to_string_pretty(&data)?;
+        let mut file = std::fs::File::create(save_to_file_name)?;
+        file.write_all(json_str.as_bytes())?;
+
+        drop(lock);
     }
 
     Ok(HttpResponse::Ok().body("{\"data\": \"ok\"}"))
