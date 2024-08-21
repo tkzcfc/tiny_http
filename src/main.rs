@@ -2,10 +2,12 @@ use actix_files::NamedFile;
 use actix_web::http::header::LOCATION;
 use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result};
 use actix_web_httpauth::extractors::basic::{BasicAuth, Config};
+use anyhow::anyhow;
 use chrono::Local;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::env;
 use std::fmt::Write as FmtWrite;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -283,18 +285,31 @@ async fn upload_log(
 /// }
 /// ```
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     let bind_address = format!("{}:{}", args.address, args.port);
     println!("Starting server at http://{}", bind_address);
 
-    let app_state = AppState {
+    let mut app_state = AppState {
         save_path: args.save_path,
         username: args.username,
         password: args.password,
         file_lock: Arc::new(RwLock::new(HashMap::new())),
     };
+
+    if !Path::new(&app_state.save_path).is_absolute() {
+        let current_dir = env::current_dir()?;
+        let mut save_path = app_state.save_path.clone();
+        if save_path.starts_with("./") {
+            save_path = (&save_path[2..]).to_string();
+        }
+        if let Some(path) = current_dir.join(save_path).to_str() {
+            app_state.save_path = path.to_string();
+        } else {
+            return Err(anyhow!("path '{}' conversion failed", app_state.save_path));
+        }
+    }
 
     HttpServer::new(move || {
         App::new()
@@ -304,5 +319,7 @@ async fn main() -> std::io::Result<()> {
     })
     .bind(&bind_address)?
     .run()
-    .await
+    .await?;
+
+    Ok(())
 }
