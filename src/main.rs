@@ -1,32 +1,33 @@
-use actix_files::NamedFile;
+mod orm_entities;
+
+use crate::orm_entities::{upload_log, upload_user};
 use actix_web::http::header::LOCATION;
 use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result};
 use actix_web_httpauth::extractors::basic::{BasicAuth, Config};
-use anyhow::anyhow;
-use chrono::Local;
+use chrono::Utc;
 use clap::Parser;
+use orm_entities::prelude::*;
+use sea_orm::sea_query::SqliteQueryBuilder;
+use sea_orm::ActiveValue::Set;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
+    EntityTrait, NotSet, QueryFilter, Schema, Statement,
+};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::env;
-use std::fmt::Write as FmtWrite;
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::string::String;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use std::time::Duration;
+use tokio::sync::Mutex;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// The address to listen on
-    #[arg(long, default_value = "0.0.0.0")]
-    address: String,
+    #[arg(long, default_value = "0.0.0.0:8000")]
+    listen_addr: String,
 
-    /// The port to listen on
-    #[arg(long, default_value_t = 8000)]
-    port: u16,
-
-    #[arg(long, default_value = "./")]
-    save_path: String,
+    #[arg(long, default_value = "sqlite://data.db?mode=rwc")]
+    database_url: String,
 
     #[arg(long, default_value = "")]
     username: String,
@@ -37,92 +38,9 @@ struct Args {
 
 #[derive(Clone)]
 struct AppState {
-    save_path: String,
-    username: String,
-    password: String,
-    file_lock: Arc<RwLock<HashMap<String, Arc<Mutex<bool>>>>>,
-}
-
-#[get("/{filename:.*}")]
-async fn serve_file(
-    req: HttpRequest,
-    credentials: BasicAuth,
-    data: web::Data<AppState>,
-) -> Result<impl Responder> {
-    if !data.username.is_empty() || !data.password.is_empty() {
-        let username = credentials.user_id();
-        let password = credentials.password().unwrap_or_default();
-
-        // 验证用户名和密码
-        if username != data.username || password != data.password {
-            let config = req.app_data::<Config>().cloned().unwrap_or_default();
-            return Err(actix_web_httpauth::extractors::AuthenticationError::from(config).into());
-        }
-    }
-
-    let path: PathBuf = req.match_info().query("filename").parse().unwrap();
-    let full_path = PathBuf::from(&data.save_path).join(&path);
-
-    if full_path.is_dir() {
-        Ok(HttpResponse::Ok()
-            .content_type("text/html")
-            .body(generate_directory_listing(&full_path)?))
-    } else {
-        match NamedFile::open(&full_path) {
-            Ok(file) => Ok(file.into_response(&req)),
-            Err(_) => {
-                // Redirect to the homepage if the file is not found
-                Ok(HttpResponse::Found()
-                    .append_header((LOCATION, "/"))
-                    .finish())
-            }
-        }
-    }
-}
-
-fn generate_directory_listing(path: &Path) -> std::io::Result<String> {
-    let mut html = String::new();
-    write!(
-        &mut html,
-        "<html><head><title>Directory listing for {}</title></head><body>",
-        path.display()
-    )
-    .unwrap();
-
-    write!(
-        &mut html,
-        "<h1>Directory listing for {}</h1>",
-        path.display()
-    )
-    .unwrap();
-    write!(&mut html, "<ul>").unwrap();
-
-    for entry in std::fs::read_dir(path)? {
-        let entry = entry?;
-        let entry_path = entry.path();
-        let entry_name = entry.file_name();
-
-        if entry_path.is_dir() {
-            write!(
-                &mut html,
-                "<li><a href=\"{}/\">{}/</a></li>",
-                entry_name.to_string_lossy(),
-                entry_name.to_string_lossy()
-            )
-            .unwrap();
-        } else {
-            write!(
-                &mut html,
-                "<li><a href=\"{}\">{}</a></li>",
-                entry_name.to_string_lossy(),
-                entry_name.to_string_lossy()
-            )
-            .unwrap();
-        }
-    }
-
-    write!(&mut html, "</ul></body></html>").unwrap();
-    Ok(html)
+    username: Arc<String>,
+    password: Arc<String>,
+    db_pool: Arc<Mutex<DatabaseConnection>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -139,188 +57,406 @@ struct UploadLogData {
     nav_url: String,
     // 版本信息
     version: String,
+    // logs
+    #[serde(default = "default_logger")]
+    logs: Vec<String>,
 }
 
-#[derive(Deserialize, Serialize)]
-struct UploadUser {
-    // 用户
-    user: String,
-    // 包名信息
-    package: String,
-    // 导航信息
-    nav_url: String,
-    // 版本信息
-    version: String,
-    // 上报次数
-    count: u32,
-    // 首次上报时间
-    first_time: String,
-    // 最后一次上报时间
-    last_time: String,
-    // ip
-    ip: String,
+fn default_logger() -> Vec<String> {
+    vec![]
 }
 
-#[derive(Deserialize, Serialize)]
-struct LogData {
-    message: String,
-    // 上报的用户信息列表（最多保存100条）
-    upload_users: Vec<UploadUser>,
-    // 首次上报时间
-    first_time: String,
-    // 最后一次上报时间
-    last_time: String,
-    // 上报次数
-    total_count: u32,
+fn map_db_err(err: sea_orm::DbErr) -> actix_web::Error {
+    actix_web::error::ErrorInternalServerError(format!("sqlx error:{}", err.to_string()))
 }
 
 #[post("/api/upload_log")]
-async fn upload_log(
+async fn api_upload_log(
     req: HttpRequest,
-    data: web::Data<AppState>,
-    log_data: web::Json<UploadLogData>,
+    app_data: web::Data<AppState>,
+    json_data: web::Json<UploadLogData>,
 ) -> Result<HttpResponse> {
     // println!("{:?}", req);
-    // println!("{:?}", log_data);
+    // println!("{:?}", json_data);
 
-    if log_data.log_type.starts_with("error") {
-        // 计算错误内容哈希值
-        let digest = md5::compute(&log_data.message);
-        let hash_string = format!("{:x}.txt", digest);
+    if json_data.log_type.starts_with("error") {
+        // 计算消息内容哈希值
+        let digest = md5::compute(&format!("{}-{}", json_data.message, json_data.log_type));
+        let hash_string = format!("{:x}", digest);
 
-        let mut is_new = false;
-        let lock = if let Some(lock) = data.file_lock.read().await.get(&hash_string) {
-            lock.clone()
-        } else {
-            is_new = true;
-            Arc::new(Mutex::new(true))
-        };
+        let db = &*app_data.db_pool.lock().await;
 
-        if is_new {
-            data.file_lock
-                .write()
-                .await
-                .insert(hash_string.clone(), lock.clone());
-        }
+        let log_data = UploadLog::find()
+            .filter(upload_log::Column::Hash.eq(&hash_string))
+            .one(db)
+            .await
+            .map_err(map_db_err)?;
 
-        let lock = lock.lock().await;
-        // 保存文件路径
-        let dir_name = Path::new(&data.save_path).join(&log_data.log_type);
-        if !dir_name.exists() || !dir_name.is_dir() {
-            std::fs::create_dir_all(dir_name.clone())?;
-        }
-        let save_to_file_name = dir_name.join(hash_string.clone());
-
-        let fmt = "%Y-%m-%d %H:%M:%S";
-        let now = Local::now().format(fmt).to_string();
-
-        let mut data = if save_to_file_name.exists() && save_to_file_name.is_file() {
-            serde_json::from_reader(std::fs::File::open(save_to_file_name.clone())?)?
-        } else {
-            LogData {
-                message: log_data.message.clone(),
-                upload_users: vec![],
-                first_time: now.clone(),
-                last_time: "".to_string(),
-                total_count: 0,
-            }
-        };
-
-        data.total_count = data.total_count + 1;
-        data.last_time = now.clone();
-
-        let mut is_exists = false;
-        for it in &mut data.upload_users {
-            if it.user == log_data.user
-                && it.version == log_data.version
-                && it.nav_url == log_data.nav_url
-            {
-                it.last_time = now.clone();
-                it.count = it.count + 1;
-                is_exists = true;
-                break;
+        let mut save_user = true;
+        if let Some(ref log_data) = log_data {
+            if log_data.user_list.split(",").count() > 100 {
+                save_user = false;
             }
         }
 
-        if !is_exists && data.upload_users.len() < 50 {
+        let mut user_id = None;
+        if save_user {
             let ip = if let Some(x) = req.connection_info().realip_remote_addr() {
                 x.to_string()
             } else {
                 "unknown".to_string()
             };
+            let user = upload_user::ActiveModel {
+                id: NotSet,
+                package: Set(json_data.package.to_owned()),
+                nav_url: Set(json_data.nav_url.to_owned()),
+                version: Set(json_data.version.to_owned()),
+                logs: Set(json_data.logs.join("\n")),
+                user: Set(json_data.user.to_owned()),
+                ip: Set(ip),
+                time: Set(Utc::now().naive_utc()),
+            };
 
-            data.upload_users.push(UploadUser {
-                user: log_data.user.clone(),
-                package: log_data.package.clone(),
-                nav_url: log_data.nav_url.clone(),
-                version: log_data.version.clone(),
-                count: 1,
-                first_time: now.clone(),
-                last_time: now.clone(),
-                ip,
-            })
+            let user = user.save(db).await.map_err(map_db_err)?;
+            user_id = Some(user.id.unwrap());
         }
 
-        let json_str = serde_json::to_string_pretty(&data)?;
-        let mut file = std::fs::File::create(save_to_file_name)?;
-        file.write_all(json_str.as_bytes())?;
+        let log_active_model = if let Some(log_data) = log_data {
+            // 上报总数
+            let total_count = log_data.total_count + 1;
+            // 上报用户列表
+            let mut user_list: Vec<_> = log_data
+                .user_list
+                .split(",")
+                .map(|x| x.to_string())
+                .collect();
+            if let Some(user_id) = user_id {
+                user_list.push(format!("{}", user_id));
+            }
+            let user_list = user_list.join(",");
+            // 状态更新
+            let status = if log_data.status == 0 { 0 } else { -1 };
 
-        drop(lock);
+            let mut log_active_model: upload_log::ActiveModel = log_data.into();
+            log_active_model.total_count = Set(total_count);
+            log_active_model.last_time = Set(Utc::now().naive_utc());
+            log_active_model.user_list = Set(user_list);
+            log_active_model.status = Set(status);
+
+            log_active_model
+        } else {
+            let mut user_list: Vec<String> = vec![];
+            if let Some(user_id) = user_id {
+                user_list.push(format!("{user_id}"));
+            }
+            let user_list = user_list.join(",");
+
+            upload_log::ActiveModel {
+                id: NotSet,
+                hash: Set(hash_string),
+                user_list: Set(user_list),
+                first_time: Set(Utc::now().naive_utc()),
+                last_time: Set(Utc::now().naive_utc()),
+                total_count: Set(1),
+                status: Set(0),
+                resolution_time: Set(Utc::now().naive_utc()),
+                log_type: Set(json_data.log_type.to_owned()),
+                message: Set(json_data.message.to_owned()),
+            }
+        };
+
+        log_active_model.save(db).await.map_err(map_db_err)?;
     }
 
     Ok(HttpResponse::Ok().body("{\"data\": \"ok\"}"))
 }
 
-/// # 更简单的方式： https://actix.rs/docs/static-files
-/// ```
-/// use actix_files as fs;
-/// use actix_web::{App, HttpServer};
-///
-/// #[actix_web::main]
-/// async fn main() -> std::io::Result<()> {
-///     HttpServer::new(|| App::new().service(fs::Files::new("/static", ".").show_files_listing()))
-///         .bind(("127.0.0.1", 8080))?
-///         .run()
-///         .await
-/// }
-/// ```
+#[derive(Deserialize, Debug)]
+struct LogContentRequestData {
+    hash: String,
+}
+
+#[derive(Serialize, Debug)]
+struct LogContentResponseBriefUserData {
+    id: i32,
+    package: String,
+    nav_url: String,
+    version: String,
+    user: String,
+    ip: String,
+    time: String,
+}
+
+#[derive(Serialize, Debug)]
+struct LogContentResponseData {
+    hash: String,
+    user_list: Vec<LogContentResponseBriefUserData>,
+    first_time: String,
+    last_time: String,
+    total_count: i32,
+    ///  0 未解决， 1 已解决, -1已解决之后又上报了
+    status: i32,
+    resolution_time: String,
+    message: String,
+}
+
+#[post("/api/log_content")]
+async fn api_log_content(
+    _req: HttpRequest,
+    app_data: web::Data<AppState>,
+    json_data: web::Json<LogContentRequestData>,
+) -> Result<HttpResponse> {
+    let db = &*app_data.db_pool.lock().await;
+    let logs = UploadLog::find()
+        .filter(upload_log::Column::Hash.eq(&json_data.hash))
+        .one(db)
+        .await
+        .map_err(map_db_err)?;
+
+    if let Some(logs) = logs {
+        let mut user_list = vec![];
+
+        for (_, id) in logs.user_list.split(",").enumerate() {
+            if let Some(user_data) = UploadUser::find()
+                .filter(upload_user::Column::Id.eq(id))
+                .one(db)
+                .await
+                .map_err(map_db_err)?
+            {
+                user_list.push(LogContentResponseBriefUserData {
+                    id: user_data.id,
+                    package: user_data.package,
+                    nav_url: user_data.nav_url,
+                    version: user_data.version,
+                    user: user_data.user,
+                    ip: user_data.ip,
+                    time: user_data.time.format("%m-%d %H:%M:%S").to_string(),
+                });
+            }
+        }
+
+        let response = LogContentResponseData {
+            hash: logs.hash,
+            user_list,
+            first_time: logs.first_time.format("%Y-%m-%d %H:%M:%S").to_string(),
+            last_time: logs.last_time.format("%Y-%m-%d %H:%M:%S").to_string(),
+            total_count: logs.total_count,
+            status: logs.status,
+            resolution_time: logs.resolution_time.format("%Y-%m-%d %H:%M:%S").to_string(),
+            message: logs.message,
+        };
+
+        Ok(HttpResponse::Ok().body(serde_json::to_string(&response)?))
+    } else {
+        Ok(HttpResponse::Ok().body(format!("no file: {}", json_data.hash)))
+    }
+}
+
+#[post("/api/log_complete")]
+async fn api_log_complete(
+    _req: HttpRequest,
+    app_data: web::Data<AppState>,
+    json_data: web::Json<LogContentRequestData>,
+) -> Result<impl Responder> {
+    let db = &*app_data.db_pool.lock().await;
+    if let Some(log_data_model) = UploadLog::find()
+        .filter(upload_log::Column::Hash.eq(&json_data.hash))
+        .one(db)
+        .await
+        .map_err(map_db_err)?
+    {
+        let mut log_active_model: upload_log::ActiveModel = log_data_model.into();
+        log_active_model.status = Set(1);
+        log_active_model.resolution_time = Set(Utc::now().naive_utc());
+        log_active_model.save(db).await.map_err(map_db_err)?;
+    }
+
+    Ok(HttpResponse::Ok().body("{\"data\": \"ok\"}"))
+}
+
+#[derive(Deserialize, Debug)]
+struct UserLogResponseData {
+    id: String,
+}
+
+#[post("/api/user_log")]
+async fn api_user_log(
+    _req: HttpRequest,
+    app_data: web::Data<AppState>,
+    json_data: web::Json<UserLogResponseData>,
+) -> Result<HttpResponse> {
+    let db = &*app_data.db_pool.lock().await;
+
+    if let Some(user_data) = UploadUser::find()
+        .filter(upload_user::Column::Id.eq(&json_data.id))
+        .one(db)
+        .await
+        .map_err(map_db_err)?
+    {
+        Ok(HttpResponse::Ok().body(user_data.logs))
+    } else {
+        Ok(HttpResponse::Ok().body("empty"))
+    }
+}
+
+// 用户鉴权
+async fn user_authentication(
+    req: &HttpRequest,
+    credentials: &BasicAuth,
+    app_data: &web::Data<AppState>,
+) -> Result<()> {
+    if !app_data.username.is_empty() || !app_data.password.is_empty() {
+        let username = credentials.user_id();
+        let password = credentials.password().unwrap_or_default();
+
+        // 验证用户名和密码
+        if username != app_data.username.as_str() || password != app_data.password.as_str() {
+            let config = req.app_data::<Config>().cloned().unwrap_or_default();
+            return Err(actix_web_httpauth::extractors::AuthenticationError::from(config).into());
+        }
+    }
+    Ok(())
+}
+
+const FAVICON: &[u8] = include_bytes!("favicon.ico");
+
+#[get("/{filename:.*}")]
+async fn index(
+    req: HttpRequest,
+    credentials: BasicAuth,
+    app_data: web::Data<AppState>,
+) -> Result<impl Responder> {
+    user_authentication(&req, &credentials, &app_data).await?;
+
+    let file_name = req.match_info().query("filename");
+
+    if file_name == "favicon.ico" {
+        return Ok(HttpResponse::Ok()
+            .content_type("image/vnd.microsoft.icon")
+            .body(FAVICON));
+    }
+
+    if file_name != "index.html" {
+        return Ok(HttpResponse::Found()
+            .append_header((LOCATION, "/index.html"))
+            .finish());
+    }
+
+    let html = include_str!("index.html");
+    Ok(HttpResponse::Ok().content_type("text/html").body(html))
+}
+
+#[get("/log_content/{log_type:.+}")]
+async fn log_content(
+    req: HttpRequest,
+    credentials: BasicAuth,
+    app_data: web::Data<AppState>,
+) -> Result<impl Responder> {
+    user_authentication(&req, &credentials, &app_data).await?;
+
+    let log_type = req.match_info().query("log_type");
+
+    let db = &*app_data.db_pool.lock().await;
+    let logs = UploadLog::find()
+        .filter(upload_log::Column::LogType.eq(log_type))
+        .all(db)
+        .await
+        .map_err(map_db_err)?;
+
+    if logs.is_empty() {
+        let html = include_str!("log_list_empty.html");
+        return Ok(HttpResponse::Ok().content_type("text/html").body(html));
+    }
+
+    let mut menu_list_script = String::new();
+    for log in logs {
+        let lines = log.message.split("\n").collect::<Vec<_>>();
+
+        let mut first_line = "empty";
+        if !lines.is_empty() {
+            first_line = lines[0];
+        }
+
+        //  0 未解决， 1 已解决,  -1已解决之后又上报了
+        let script = match log.status {
+            -1 => {
+                format!("            <li class=\"yellow-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}</li>", log.hash, log.hash, first_line)
+            }
+            1 => {
+                format!("            <li class=\"green-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}</li>", log.hash, log.hash, first_line)
+            }
+            _ => {
+                format!("            <li class=\"red-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}</li>", log.hash, log.hash, first_line)
+            }
+        };
+
+        menu_list_script.push_str(&script);
+    }
+
+    let template = include_str!("log_content.html");
+    let html = template.replace("{MENU_ITEM_CODE}", &menu_list_script);
+
+    Ok(HttpResponse::Ok().content_type("text/html").body(html))
+}
+
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let bind_address = format!("{}:{}", args.address, args.port);
-    println!("Starting server at http://{}", bind_address);
+    let mut opt = ConnectOptions::new(&args.database_url);
+    opt.max_connections(100)
+        .min_connections(5)
+        .connect_timeout(Duration::from_secs(8))
+        .acquire_timeout(Duration::from_secs(8))
+        .idle_timeout(Duration::from_secs(8))
+        .max_lifetime(Duration::from_secs(8))
+        .sqlx_logging(true)
+        .sqlx_logging_level(log::LevelFilter::Info);
 
-    let mut app_state = AppState {
-        save_path: args.save_path,
-        username: args.username,
-        password: args.password,
-        file_lock: Arc::new(RwLock::new(HashMap::new())),
+    let db_pool = Database::connect(opt)
+        .await
+        .expect("Database initialization failed");
+
+    let backend = db_pool.get_database_backend();
+    let schema = Schema::new(backend);
+    db_pool
+        .execute(Statement::from_string(
+            backend,
+            schema
+                .create_table_from_entity(upload_user::Entity)
+                .if_not_exists()
+                .to_string(SqliteQueryBuilder),
+        ))
+        .await?;
+    db_pool
+        .execute(Statement::from_string(
+            backend,
+            schema
+                .create_table_from_entity(upload_log::Entity)
+                .if_not_exists()
+                .to_string(SqliteQueryBuilder),
+        ))
+        .await?;
+
+    println!("Starting server at http://{}", args.listen_addr);
+
+    let app_state = AppState {
+        username: Arc::new(args.username.to_owned()),
+        password: Arc::new(args.password.to_owned()),
+        db_pool: Arc::new(Mutex::new(db_pool)),
     };
-
-    if !Path::new(&app_state.save_path).is_absolute() {
-        let current_dir = env::current_dir()?;
-        let mut save_path = app_state.save_path.clone();
-        if save_path.starts_with("./") {
-            save_path = (&save_path[2..]).to_string();
-        }
-
-        let path = current_dir.join(save_path);
-        std::fs::create_dir_all(&path)?;
-        if let Some(path) = path.to_str() {
-            app_state.save_path = path.to_string();
-        } else {
-            return Err(anyhow!("path '{}' conversion failed", app_state.save_path));
-        }
-    }
 
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(app_state.clone()))
-            .service(serve_file)
-            .service(upload_log)
+            .service(api_upload_log)
+            .service(api_log_content)
+            .service(api_user_log)
+            .service(api_log_complete)
+            .service(log_content)
+            .service(index)
     })
-    .bind(&bind_address)?
+    .bind(&args.listen_addr)?
     .run()
     .await?;
 
