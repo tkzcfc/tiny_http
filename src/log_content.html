@@ -244,10 +244,28 @@
 </div>
 
 <script>
+    // 页面加载时定位到带有 hash 的 item 并点击
+    window.onload = function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const hash = urlParams.get('hash');
+        if (hash) {
+            const item = document.getElementById('item-' + hash);
+            if (item) {
+                item.scrollIntoView({ behavior: "smooth", block: "center" }); // 平滑滚动到该元素
+                item.click(); // 自动触发点击事件
+            }
+        }
+    }
+
     let activeRequestController = null; // 用来存储上一次请求的控制器
     let activeShowMenuItemId = null;
 
     function onClickMenu(id) {
+        // 更新 URL 但不刷新页面
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.set('hash', id);
+        window.history.pushState(null, '', newUrl);
+
         activeShowMenuItemId = id;
         // 改变左侧选中状态
         const items = document.querySelectorAll('#menu-list li');

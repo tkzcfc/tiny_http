@@ -355,6 +355,7 @@ async fn log_content(
     user_authentication(&req, &credentials, &app_data).await?;
 
     let log_type = req.match_info().query("log_type");
+    // let hash = req.match_info().query("hash");
 
     let db = &*app_data.db_pool.lock().await;
     let logs = UploadLog::find()
@@ -380,13 +381,13 @@ async fn log_content(
         //  0 未解决， 1 已解决,  -1已解决之后又上报了
         let script = match log.status {
             -1 => {
-                format!("            <li class=\"yellow-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}</li>", log.hash, log.hash, first_line)
+                format!("\n            <li class=\"yellow-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}</li>", log.hash, log.hash, first_line)
             }
             1 => {
-                format!("            <li class=\"green-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}</li>", log.hash, log.hash, first_line)
+                format!("\n            <li class=\"green-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}</li>", log.hash, log.hash, first_line)
             }
             _ => {
-                format!("            <li class=\"red-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}</li>", log.hash, log.hash, first_line)
+                format!("\n            <li class=\"red-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}</li>", log.hash, log.hash, first_line)
             }
         };
 
