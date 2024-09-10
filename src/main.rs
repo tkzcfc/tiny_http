@@ -58,12 +58,12 @@ struct UploadLogData {
     // 版本信息
     version: String,
     // logs
-    #[serde(default = "default_logger")]
-    logs: Vec<String>,
+    #[serde(default = "default_string")]
+    logs: String,
 }
 
-fn default_logger() -> Vec<String> {
-    vec![]
+fn default_string() -> String {
+    "".into()
 }
 
 fn map_db_err(err: sea_orm::DbErr) -> actix_web::Error {
@@ -111,7 +111,7 @@ async fn api_upload_log(
                 package: Set(json_data.package.to_owned()),
                 nav_url: Set(json_data.nav_url.to_owned()),
                 version: Set(json_data.version.to_owned()),
-                logs: Set(json_data.logs.join("\n")),
+                logs: Set(json_data.logs.to_owned()),
                 user: Set(json_data.user.to_owned()),
                 ip: Set(ip),
                 time: Set(Utc::now().naive_utc()),
