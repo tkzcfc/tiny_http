@@ -273,8 +273,6 @@
 
         const itemTarget = document.getElementById(`item-${id}`);
         itemTarget.classList.add('active');
-        // 移除各种提示点
-        itemTarget.classList.remove('red-dot', 'green-dot', 'yellow-dot');
 
         // 显示加载中的动画
         const contentArea = document.getElementById('content-area');
@@ -314,6 +312,8 @@
                     // 最后修复时间
                     let RESOLUTION_TIME_SCRIPT = `<p style="background-color: #ff7500; color: white; border-radius: 12px; padding: 5px 10px; display: inline-block; font-size: 14px;">最后解决时间:${data.resolution_time}</p>`;
 
+                    // 移除各种提示点
+                    itemTarget.classList.remove('red-dot', 'green-dot', 'yellow-dot');
                     //  0 未解决， 1 已解决,  -1已解决之后又上报了
                     // 提示点显示
                     if(data.status === 1) {
