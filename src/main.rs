@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::string::String;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
+use tokio::sync::OnceCell;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -40,7 +40,7 @@ struct Args {
 struct AppState {
     username: Arc<String>,
     password: Arc<String>,
-    db_pool: Arc<Mutex<DatabaseConnection>>,
+    db_pool: Arc<OnceCell<DatabaseConnection>>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -84,11 +84,9 @@ async fn api_upload_log(
         let digest = md5::compute(&format!("{}-{}", json_data.message, json_data.log_type));
         let hash_string = format!("{:x}", digest);
 
-        let db = &*app_data.db_pool.lock().await;
-
         let log_data = UploadLog::find()
             .filter(upload_log::Column::Hash.eq(&hash_string))
-            .one(db)
+            .one(app_data.db_pool.get().unwrap())
             .await
             .map_err(map_db_err)?;
 
@@ -117,7 +115,10 @@ async fn api_upload_log(
                 time: Set(Utc::now().naive_utc()),
             };
 
-            let user = user.save(db).await.map_err(map_db_err)?;
+            let user = user
+                .save(app_data.db_pool.get().unwrap())
+                .await
+                .map_err(map_db_err)?;
             user_id = Some(user.id.unwrap());
         }
 
@@ -165,7 +166,10 @@ async fn api_upload_log(
             }
         };
 
-        log_active_model.save(db).await.map_err(map_db_err)?;
+        log_active_model
+            .save(app_data.db_pool.get().unwrap())
+            .await
+            .map_err(map_db_err)?;
     }
 
     Ok(HttpResponse::Ok().body("{\"data\": \"ok\"}"))
@@ -206,10 +210,9 @@ async fn api_log_content(
     app_data: web::Data<AppState>,
     json_data: web::Json<LogContentRequestData>,
 ) -> Result<HttpResponse> {
-    let db = &*app_data.db_pool.lock().await;
     let logs = UploadLog::find()
         .filter(upload_log::Column::Hash.eq(&json_data.hash))
-        .one(db)
+        .one(app_data.db_pool.get().unwrap())
         .await
         .map_err(map_db_err)?;
 
@@ -219,7 +222,7 @@ async fn api_log_content(
         for (_, id) in logs.user_list.split(",").enumerate() {
             if let Some(user_data) = UploadUser::find()
                 .filter(upload_user::Column::Id.eq(id))
-                .one(db)
+                .one(app_data.db_pool.get().unwrap())
                 .await
                 .map_err(map_db_err)?
             {
@@ -258,17 +261,19 @@ async fn api_log_complete(
     app_data: web::Data<AppState>,
     json_data: web::Json<LogContentRequestData>,
 ) -> Result<impl Responder> {
-    let db = &*app_data.db_pool.lock().await;
     if let Some(log_data_model) = UploadLog::find()
         .filter(upload_log::Column::Hash.eq(&json_data.hash))
-        .one(db)
+        .one(app_data.db_pool.get().unwrap())
         .await
         .map_err(map_db_err)?
     {
         let mut log_active_model: upload_log::ActiveModel = log_data_model.into();
         log_active_model.status = Set(1);
         log_active_model.resolution_time = Set(Utc::now().naive_utc());
-        log_active_model.save(db).await.map_err(map_db_err)?;
+        log_active_model
+            .save(app_data.db_pool.get().unwrap())
+            .await
+            .map_err(map_db_err)?;
     }
 
     Ok(HttpResponse::Ok().body("{\"data\": \"ok\"}"))
@@ -285,11 +290,9 @@ async fn api_user_log(
     app_data: web::Data<AppState>,
     json_data: web::Json<UserLogResponseData>,
 ) -> Result<HttpResponse> {
-    let db = &*app_data.db_pool.lock().await;
-
     if let Some(user_data) = UploadUser::find()
         .filter(upload_user::Column::Id.eq(&json_data.id))
-        .one(db)
+        .one(app_data.db_pool.get().unwrap())
         .await
         .map_err(map_db_err)?
     {
@@ -357,10 +360,9 @@ async fn log_content(
     let log_type = req.match_info().query("log_type");
     // let hash = req.match_info().query("hash");
 
-    let db = &*app_data.db_pool.lock().await;
     let logs = UploadLog::find()
         .filter(upload_log::Column::LogType.eq(log_type))
-        .all(db)
+        .all(app_data.db_pool.get().unwrap())
         .await
         .map_err(map_db_err)?;
 
@@ -444,7 +446,7 @@ async fn main() -> anyhow::Result<()> {
     let app_state = AppState {
         username: Arc::new(args.username.to_owned()),
         password: Arc::new(args.password.to_owned()),
-        db_pool: Arc::new(Mutex::new(db_pool)),
+        db_pool: Arc::new(OnceCell::const_new_with(db_pool)),
     };
 
     HttpServer::new(move || {
