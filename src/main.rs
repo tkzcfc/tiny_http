@@ -11,7 +11,7 @@ use sea_orm::sea_query::SqliteQueryBuilder;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection,
-    EntityTrait, NotSet, QueryFilter, Schema, Statement,
+    EntityTrait, ModelTrait, NotSet, QueryFilter, Schema, Statement,
 };
 use serde::{Deserialize, Serialize};
 use std::string::String;
@@ -34,12 +34,20 @@ struct Args {
 
     #[arg(long, default_value = "")]
     password: String,
+
+    #[arg(long, default_value = "")]
+    admin_account: String,
+
+    #[arg(long, default_value = "")]
+    admin_password: String,
 }
 
 #[derive(Clone)]
 struct AppState {
     username: Arc<String>,
     password: Arc<String>,
+    admin_account: Arc<String>,
+    admin_password: Arc<String>,
     db_pool: Arc<OnceCell<DatabaseConnection>>,
 }
 
@@ -202,14 +210,18 @@ struct LogContentResponseData {
     status: i32,
     resolution_time: String,
     message: String,
+    can_remove: bool,
 }
 
 #[post("/api/log_content")]
 async fn api_log_content(
-    _req: HttpRequest,
+    req: HttpRequest,
+    credentials: BasicAuth,
     app_data: web::Data<AppState>,
     json_data: web::Json<LogContentRequestData>,
 ) -> Result<HttpResponse> {
+    let is_admin = user_authentication(&req, &credentials, &app_data).await?;
+
     let logs = UploadLog::find()
         .filter(upload_log::Column::Hash.eq(&json_data.hash))
         .one(app_data.db_pool.get().unwrap())
@@ -247,6 +259,7 @@ async fn api_log_content(
             status: logs.status,
             resolution_time: logs.resolution_time.format("%Y-%m-%d %H:%M:%S").to_string(),
             message: logs.message,
+            can_remove: if logs.status == 1 { is_admin } else { false },
         };
 
         Ok(HttpResponse::Ok().body(serde_json::to_string(&response)?))
@@ -257,10 +270,13 @@ async fn api_log_content(
 
 #[post("/api/log_complete")]
 async fn api_log_complete(
-    _req: HttpRequest,
+    req: HttpRequest,
+    credentials: BasicAuth,
     app_data: web::Data<AppState>,
     json_data: web::Json<LogContentRequestData>,
 ) -> Result<impl Responder> {
+    let _ = user_authentication(&req, &credentials, &app_data).await?;
+
     if let Some(log_data_model) = UploadLog::find()
         .filter(upload_log::Column::Hash.eq(&json_data.hash))
         .one(app_data.db_pool.get().unwrap())
@@ -272,6 +288,48 @@ async fn api_log_complete(
         log_active_model.resolution_time = Set(Utc::now().naive_utc());
         log_active_model
             .save(app_data.db_pool.get().unwrap())
+            .await
+            .map_err(map_db_err)?;
+    }
+
+    Ok(HttpResponse::Ok().body("{\"data\": \"ok\"}"))
+}
+
+#[post("/api/log_remove")]
+async fn api_log_remove(
+    req: HttpRequest,
+    credentials: BasicAuth,
+    app_data: web::Data<AppState>,
+    json_data: web::Json<LogContentRequestData>,
+) -> Result<impl Responder> {
+    if !user_authentication(&req, &credentials, &app_data).await? {
+        return Ok(HttpResponse::Forbidden().finish());
+    }
+
+    if let Some(log_data_model) = UploadLog::find()
+        .filter(upload_log::Column::Hash.eq(&json_data.hash))
+        .one(app_data.db_pool.get().unwrap())
+        .await
+        .map_err(map_db_err)?
+    {
+        for (_, id) in log_data_model.user_list.split(",").enumerate() {
+            let upload_user = UploadUser::find()
+                .filter(upload_user::Column::Id.eq(id))
+                .one(app_data.db_pool.get().unwrap())
+                .await
+                .map_err(map_db_err)?;
+
+            if let Some(upload_user) = upload_user {
+                upload_user
+                    .delete(app_data.db_pool.get().unwrap())
+                    .await
+                    .map_err(map_db_err)?;
+            }
+        }
+
+        let log_active_model: upload_log::ActiveModel = log_data_model.into();
+        log_active_model
+            .delete(app_data.db_pool.get().unwrap())
             .await
             .map_err(map_db_err)?;
     }
@@ -307,18 +365,30 @@ async fn user_authentication(
     req: &HttpRequest,
     credentials: &BasicAuth,
     app_data: &web::Data<AppState>,
-) -> Result<()> {
-    if !app_data.username.is_empty() || !app_data.password.is_empty() {
-        let username = credentials.user_id();
-        let password = credentials.password().unwrap_or_default();
+) -> Result<bool> {
+    let username = credentials.user_id();
+    let password = credentials.password().unwrap_or_default();
 
+    if !app_data.admin_account.is_empty() || !app_data.admin_password.is_empty() {
         // 验证用户名和密码
-        if username != app_data.username.as_str() || password != app_data.password.as_str() {
-            let config = req.app_data::<Config>().cloned().unwrap_or_default();
-            return Err(actix_web_httpauth::extractors::AuthenticationError::from(config).into());
-        }
+        if username == app_data.admin_account.as_str()
+            && password == app_data.admin_password.as_str()
+        {
+            return Ok(true);
+        };
     }
-    Ok(())
+
+    if !app_data.username.is_empty() || !app_data.password.is_empty() {
+        // 验证用户名和密码
+        return if username == app_data.username.as_str() || password == app_data.password.as_str() {
+            Ok(false)
+        } else {
+            let config = req.app_data::<Config>().cloned().unwrap_or_default();
+            Err(actix_web_httpauth::extractors::AuthenticationError::from(config).into())
+        };
+    }
+
+    return Ok(false);
 }
 
 const FAVICON: &[u8] = include_bytes!("favicon.ico");
@@ -329,7 +399,7 @@ async fn index(
     credentials: BasicAuth,
     app_data: web::Data<AppState>,
 ) -> Result<impl Responder> {
-    user_authentication(&req, &credentials, &app_data).await?;
+    let _ = user_authentication(&req, &credentials, &app_data).await?;
 
     let file_name = req.match_info().query("filename");
 
@@ -349,13 +419,19 @@ async fn index(
     Ok(HttpResponse::Ok().content_type("text/html").body(html))
 }
 
+#[derive(Deserialize, Debug)]
+struct LogVersionInfo {
+    branch: String,
+    game_id: i32,
+}
+
 #[get("/log_content/{log_type:.+}")]
 async fn log_content(
     req: HttpRequest,
     credentials: BasicAuth,
     app_data: web::Data<AppState>,
 ) -> Result<impl Responder> {
-    user_authentication(&req, &credentials, &app_data).await?;
+    let _ = user_authentication(&req, &credentials, &app_data).await?;
 
     let log_type = req.match_info().query("log_type");
     // let hash = req.match_info().query("hash");
@@ -380,16 +456,45 @@ async fn log_content(
             first_line = lines[0];
         }
 
+        let mut prefix = "[Lobby]".to_string();
+        let user_list: Vec<_> = log.user_list.split(",").collect();
+        if user_list.len() > 0 {
+            if let Some(user_data) = UploadUser::find()
+                .filter(upload_user::Column::Id.eq(user_list[0]))
+                .one(app_data.db_pool.get().unwrap())
+                .await
+                .map_err(map_db_err)?
+            {
+                if let Ok(version_info) =
+                    serde_json::from_str::<LogVersionInfo>(&*user_data.version)
+                {
+                    let branch_name = if version_info.branch.is_empty() {
+                        "".to_string()
+                    } else {
+                        format!("({})", version_info.branch)
+                    };
+                    prefix = if version_info.game_id == 0 {
+                        format!("[Lobby{}]", branch_name)
+                    } else {
+                        format!("[Game{}{}]", version_info.game_id, branch_name)
+                    }
+                } else {
+                    prefix = "[Unknown]".to_string();
+                }
+            }
+        }
+        // serde_json::from_str(log.log_type)
+
         //  0 未解决， 1 已解决,  -1已解决之后又上报了
         let script = match log.status {
             -1 => {
-                format!("\n            <li class=\"yellow-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}</li>", log.hash, log.hash, first_line)
+                format!("\n            <li class=\"yellow-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}{}</li>", log.hash, log.hash, prefix, first_line)
             }
             1 => {
-                format!("\n            <li class=\"green-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}</li>", log.hash, log.hash, first_line)
+                format!("\n            <li class=\"green-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}{}</li>", log.hash, log.hash, prefix, first_line)
             }
             _ => {
-                format!("\n            <li class=\"red-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}</li>", log.hash, log.hash, first_line)
+                format!("\n            <li class=\"red-dot\" id=item-{} onclick=\"onClickMenu('{}', event.currentTarget)\">{}{}</li>", log.hash, log.hash, prefix, first_line)
             }
         };
 
@@ -446,6 +551,8 @@ async fn main() -> anyhow::Result<()> {
     let app_state = AppState {
         username: Arc::new(args.username.to_owned()),
         password: Arc::new(args.password.to_owned()),
+        admin_account: Arc::new(args.admin_account.to_owned()),
+        admin_password: Arc::new(args.admin_password.to_owned()),
         db_pool: Arc::new(OnceCell::const_new_with(db_pool)),
     };
 
@@ -456,6 +563,7 @@ async fn main() -> anyhow::Result<()> {
             .service(api_log_content)
             .service(api_user_log)
             .service(api_log_complete)
+            .service(api_log_remove)
             .service(log_content)
             .service(index)
     })

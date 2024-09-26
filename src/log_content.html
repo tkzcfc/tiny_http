@@ -317,7 +317,12 @@
                     //  0 未解决， 1 已解决,  -1已解决之后又上报了
                     // 提示点显示
                     if(data.status === 1) {
-                        BUTTON_SCRIPT = "";
+                        // if(data.can_remove) {
+                            BUTTON_SCRIPT = `<button class="red-button" id="btn-solve-${id}" style="width: 100%;bottom: 2px;" onclick="onClickRemove('${id}')">删除</button>`;
+                        // }
+                        // else {
+                        //     BUTTON_SCRIPT = "";
+                        // }
                         itemTarget.classList.add('green-dot');
                     }
                     else if (data.status === -1) {
@@ -441,10 +446,42 @@ ${(message)}
                 onClickMenu(id);
             }
        }).catch(error => {
-           alert("修改失败");
+           alert(`修改失败: ${error}`);
        })
     }
 
+    function onClickRemove(id) {
+        const result = confirm("是否删除？");
+        if (!result) {
+            return;
+        }
+
+        fetch('/api/log_remove', {
+            method: 'POST',
+            body: JSON.stringify({ hash: id }),
+            headers: { 'Content-Type': 'application/json' },
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('请求失败');
+                }
+                return response.json();
+            }).then(data=> {
+            console.log("删除成功");
+
+            if (activeShowMenuItemId === id){
+                const contentArea = document.getElementById('content-area');
+                contentArea.innerHTML = '<div class="loading">已删除</div>';
+            }
+
+            const item = document.getElementById('item-' + id);
+            if (item) {
+                item.remove();
+            }
+        }).catch(error => {
+            alert(`删除失败: ${error}`);
+        })
+    }
 
     //////////////////////////////////////////////////////////////////// 弹窗 ////////////////////////////////////////////////////////////////////
     // 获取DOM元素
