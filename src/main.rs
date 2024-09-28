@@ -421,6 +421,7 @@ async fn index(
 
 #[derive(Deserialize, Debug)]
 struct LogVersionInfo {
+    #[serde(default = "default_string")]
     branch: String,
     game_id: i32,
 }
@@ -468,22 +469,21 @@ async fn log_content(
                 if let Ok(version_info) =
                     serde_json::from_str::<LogVersionInfo>(&*user_data.version)
                 {
-                    let branch_name = if version_info.branch.is_empty() {
-                        "".to_string()
-                    } else {
-                        format!("({})", version_info.branch)
-                    };
                     prefix = if version_info.game_id == 0 {
+                        let branch_name = if version_info.branch.is_empty() {
+                            "".to_string()
+                        } else {
+                            format!("({})", version_info.branch)
+                        };
                         format!("[Lobby{}]", branch_name)
                     } else {
-                        format!("[Game{}{}]", version_info.game_id, branch_name)
+                        format!("[Game{}]", version_info.game_id)
                     }
-                } else {
-                    prefix = "[Unknown]".to_string();
                 }
             }
         }
-        // serde_json::from_str(log.log_type)
+
+        prefix = format!("{}<{}>", prefix, log.total_count);
 
         //  0 未解决， 1 已解决,  -1已解决之后又上报了
         let script = match log.status {
