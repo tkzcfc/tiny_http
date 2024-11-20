@@ -112,6 +112,7 @@ pub async fn log_content(
         if !show_999_proto_err {
             if first_line.starts_with("LUA ERROR: type mismatch for")
                 || first_line.starts_with("LUA ERROR: unfinished bytes")
+                || first_line.starts_with("LUA ERROR: invalid varint value at offset")
             {
                 continue;
             }
