@@ -3,4 +3,5 @@
 pub mod prelude;
 
 pub mod upload_log;
+pub mod upload_statistics_cli_cfg;
 pub mod upload_user;
