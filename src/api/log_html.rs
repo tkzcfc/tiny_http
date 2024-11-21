@@ -140,12 +140,12 @@ pub async fn log_content(
     let template = include_str!("../html/log_content.html");
     let mut html = template.replace("{MENU_ITEM_CODE}", &menu_list_script);
     if is_admin {
-        html = html.replace("{LOG_CONTENT_HEAD_CODE}", "");
-    } else {
         html = html.replace(
             "{LOG_CONTENT_HEAD_CODE}",
             &format!("<div class=\"red-button\" onclick=\"removeAllLogs('{}')\" style=\"width: 100px; text-align: center;\"> 删除所有 </div>", log_type),
         );
+    } else {
+        html = html.replace("{LOG_CONTENT_HEAD_CODE}", "");
     }
 
     Ok(HttpResponse::Ok().content_type("text/html").body(html))
