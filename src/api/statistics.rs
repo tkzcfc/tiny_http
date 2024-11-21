@@ -16,6 +16,8 @@ struct UploadStatisticsCliCfgData {
     package: String,
     // 客户端配置信息
     configuration_info: String,
+    // 地区
+    region: String,
 }
 
 #[post("/api/upload_statistics_cli_cfg")]
@@ -37,6 +39,7 @@ async fn api_upload_statistics(
         package: Set(json_data.package.to_owned()),
         configuration_info: Set(json_data.configuration_info.to_owned()),
         ip: Set(ip),
+        region: Set(json_data.region.to_owned()),
         time: Set(Utc::now().naive_utc()),
     };
     let _ = data

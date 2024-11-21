@@ -17,6 +17,8 @@ pub struct Model {
     pub configuration_info: String,
     #[sea_orm(column_type = "custom(\"TINYTEXT\")")]
     pub ip: String,
+    #[sea_orm(column_type = "custom(\"TINYTEXT\")")]
+    pub region: String,
     pub time: DateTime,
 }
 
