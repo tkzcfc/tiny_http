@@ -3,6 +3,7 @@ use crate::orm_entities::prelude::UploadStatisticsCliCfg;
 use crate::orm_entities::upload_statistics_cli_cfg;
 use actix_web::{get, web, HttpRequest, HttpResponse, Responder};
 use actix_web_httpauth::extractors::basic::BasicAuth;
+use chrono::NaiveDate;
 use sea_orm::ColumnTrait;
 use sea_orm::EntityTrait;
 use sea_orm::QueryFilter;
@@ -30,17 +31,31 @@ pub async fn statistics_users(
             *count += 1;
         }
 
-        let mut table_item_codes = String::new();
-        for (key, value) in date_player_count {
-            table_item_codes = format!(
-                "{}
+        let mut lines = Vec::new();
+        for (date, player_count) in date_player_count {
+            let line = format!(
+                "
         <tr>
         <td style=\"border: 1px solid black; padding: 8px;\">{}</td>
         <td style=\"border: 1px solid black; padding: 8px;\">{}</td>
         </tr>",
-                table_item_codes, key, value
+                date, player_count
             );
+
+            lines.push((line, date));
         }
+
+        lines.sort_by(|a, b| {
+            let date_a = NaiveDate::parse_from_str(&*a.1, "%Y-%m-%d").unwrap();
+            let date_b = NaiveDate::parse_from_str(&*b.1, "%Y-%m-%d").unwrap();
+            date_a.cmp(&date_b)
+        });
+
+        let table_item_codes: String = lines
+            .iter()
+            .map(|x| x.0.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
 
         let html = include_str!("../html/statistics_users.html");
         let html = html.replace("{TABLE_ITEM_CODE}", &table_item_codes);
