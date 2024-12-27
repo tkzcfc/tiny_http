@@ -23,6 +23,12 @@
         .option:hover {
             background-color: #45a049;
         }
+        .button-container {
+            display: flex;
+            flex-direction: column; /* 垂直排列 */
+            width: 200px; /* 设置容器宽度 */
+            margin: 0; /* 整体靠左对齐 */
+        }
     </style>
 </head>
 <body>
@@ -30,8 +36,12 @@
 <h1>请选择一个类型</h1>
 
 <!-- 选项列表 -->
+<div class="button-container">
 <div class="option" onclick="selectOption('error')">H5错误列表</div>
-<div class="option" onclick="selectOption('error_999')">999错误列表</div>
+<div class="option" onclick="selectOption('error_999')">老版999错误列表</div>
+<div class="option" onclick="selectOption('error_opt_999')">新版999错误列表</div>
+<div class="option" onclick="selectOption('error_20')">2.0错误列表</div>
+</div>
 
 <script>
     function selectOption(option) {
