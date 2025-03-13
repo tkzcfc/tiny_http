@@ -50,5 +50,5 @@ pub async fn user_authentication(
         };
     }
 
-    return Ok(false);
+    Ok(false)
 }
