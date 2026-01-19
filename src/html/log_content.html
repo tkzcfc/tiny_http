@@ -784,13 +784,13 @@
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
 
-                const text = await response.text();
-                console.log('原始响应:', text);
-                const json = JSON.parse(text);
-                console.log('解析后的 JSON:', json);
-                return json;
+                // const text = await response.text();
+                // console.log('原始响应:', text);
+                // const json = JSON.parse(text);
+                // console.log('解析后的 JSON:', json);
+                // return json;
 
-                // return await response.json();
+                return await response.json();
             } catch (error) {
                 clearTimeout(timeoutId);
 
