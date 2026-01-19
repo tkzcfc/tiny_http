@@ -1,9 +1,9 @@
-use actix_web::HttpResponse;
-use serde_json::to_string;
-use actix_web::Responder;
-use actix_web::HttpRequest;
 use actix_web::get;
+use actix_web::HttpRequest;
+use actix_web::HttpResponse;
+use actix_web::Responder;
 use serde::Serialize;
+use serde_json::to_string;
 
 #[derive(Serialize, Debug)]
 struct QueryIpResponse {

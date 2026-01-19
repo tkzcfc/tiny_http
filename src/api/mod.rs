@@ -6,9 +6,9 @@ use tokio::sync::OnceCell;
 
 pub mod log;
 pub mod log_html;
+pub mod query_ip;
 pub mod statistics;
 pub mod statistics_html;
-pub mod query_ip;
 
 #[derive(Clone)]
 pub struct AppState {

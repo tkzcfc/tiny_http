@@ -1,16 +1,16 @@
-use chrono::Utc;
 use crate::api::{map_db_err, user_authentication, AppState};
 use crate::orm_entities::prelude::{UploadLog, UploadUser};
 use crate::orm_entities::{upload_log, upload_user};
 use actix_web::{post, web, HttpRequest, HttpResponse, Responder};
 use actix_web_httpauth::extractors::basic::BasicAuth;
+use chrono::Utc;
+use regex::Regex;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{
-    ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,ActiveModelTrait, ModelTrait, NotSet
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, ModelTrait, NotSet, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect,
 };
 use serde::{Deserialize, Serialize};
-use regex::Regex;
-
 
 #[derive(Deserialize, Debug)]
 struct UploadLogData {
@@ -38,7 +38,9 @@ fn default_string() -> String {
 fn normalize_error_message(error_msg: &str) -> String {
     // 替换内存地址（0x开头，后面跟着十六进制数字）
     let addr_regex = Regex::new(r"0x[0-9a-fA-F]+").unwrap();
-    let normalized = addr_regex.replace_all(error_msg, "[MEMORY_ADDRESS]").to_string();
+    let normalized = addr_regex
+        .replace_all(error_msg, "[MEMORY_ADDRESS]")
+        .to_string();
 
     normalized
 }
@@ -149,7 +151,6 @@ pub async fn api_upload_log(
     Ok(HttpResponse::Ok().body("{\"data\": \"ok\"}"))
 }
 
-
 #[derive(Deserialize, Debug)]
 struct LogListRequestData {
     page: i32,
@@ -184,7 +185,7 @@ struct LogListResponseData {
     items: Vec<LogListItemData>,
 }
 #[post("/api/log_list")]
-pub async fn api_log_list (
+pub async fn api_log_list(
     req: HttpRequest,
     credentials: BasicAuth,
     app_data: web::Data<AppState>,
@@ -218,12 +219,11 @@ pub async fn api_log_list (
     // 查询总数量 - 修正这里
     let total_count = UploadLog::find()
         .filter(condition.clone())
-        .into_model::<upload_log::Model>()  // 转换为模型
+        .into_model::<upload_log::Model>() // 转换为模型
         .count(db)
         .await
-        .map_err(|e| {
-            actix_web::error::ErrorInternalServerError(format!("Database error: {}", e))
-        })? as i32;
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Database error: {}", e)))?
+        as i32;
 
     // 查询未解决数量
     let pending_condition = Condition::all()
@@ -235,9 +235,8 @@ pub async fn api_log_list (
         .into_model::<upload_log::Model>()
         .count(db)
         .await
-        .map_err(|e| {
-            actix_web::error::ErrorInternalServerError(format!("Database error: {}", e))
-        })? as i32;
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Database error: {}", e)))?
+        as i32;
 
     // 查询已解决数量（status = 1）
     let solved_condition = Condition::all()
@@ -249,9 +248,8 @@ pub async fn api_log_list (
         .into_model::<upload_log::Model>()
         .count(db)
         .await
-        .map_err(|e| {
-            actix_web::error::ErrorInternalServerError(format!("Database error: {}", e))
-        })? as i32;
+        .map_err(|e| actix_web::error::ErrorInternalServerError(format!("Database error: {}", e)))?
+        as i32;
 
     // 计算总页数
     let total_pages = if total_count == 0 {
@@ -298,7 +296,6 @@ pub async fn api_log_list (
 
     Ok(HttpResponse::Ok().json(response))
 }
-
 
 #[derive(Deserialize, Debug)]
 struct LogContentRequestData {
