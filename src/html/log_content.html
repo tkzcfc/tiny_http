@@ -1118,14 +1118,16 @@
             console.error('加载详情失败:', error);
             const contentArea = document.getElementById('content-area');
             contentArea.innerHTML = `
-                <div style="text-align: center; padding: 40px;">
-                    <h3 style="color: var(--danger-color); margin-bottom: 20px;">加载失败</h3>
-                    <p style="margin-bottom: 20px; color: #666;">${error.message}</p>
-                    <button class="btn btn-danger" onclick="onClickMenu('${id}')">
-                        🔄 重试
-                    </button>
-                </div>
-            `;
+    <div style="text-align: center; padding: 40px;">
+        <h3 style="color: var(--danger-color); margin-bottom: 20px;">加载失败</h3>
+        <p style="margin-bottom: 20px; color: #666;">${error.message}</p>
+        <button class="btn btn-danger"
+                onclick="onClickMenu('${id}')"
+                style="display: block; margin: 0 auto; padding: 10px 20px; font-size: 14px; width: 100px; height: 40px;">
+            🔄 重试
+        </button>
+    </div>
+`;
         }
     }
 
