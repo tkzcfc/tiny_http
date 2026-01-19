@@ -55,7 +55,7 @@ pub async fn api_upload_log(
     if json_data.log_type.starts_with("error") {
         // 计算消息内容哈希值
         let normalized = normalize_error_message(&json_data.message);
-        let digest = md5::compute(&format!("{}-{}", normalized, json_data.log_type));
+        let digest = md5::compute(format!("{}-{}", normalized, json_data.log_type));
         let hash_string = format!("{:x}", digest);
 
         let log_data = UploadLog::find()
@@ -211,7 +211,7 @@ pub async fn api_log_list (
 
     // 计算分页
     let page = json_data.page.max(1);
-    let page_size = json_data.page_size.max(1).min(100);
+    let page_size = json_data.page_size.clamp(1, 100);
     let offset = ((page - 1) * page_size) as u64;
     let limit = page_size as u64;
 
@@ -348,7 +348,7 @@ pub async fn api_log_content(
     if let Some(logs) = logs {
         let mut user_list = vec![];
 
-        for (_, id) in logs.user_list.split(",").enumerate() {
+        for id in logs.user_list.split(",") {
             if let Some(user_data) = UploadUser::find()
                 .filter(upload_user::Column::Id.eq(id))
                 .one(app_data.db_pool.get().unwrap())
@@ -429,7 +429,7 @@ pub async fn api_log_remove(
         .await
         .map_err(map_db_err)?
     {
-        for (_, id) in log_data_model.user_list.split(",").enumerate() {
+        for id in log_data_model.user_list.split(",") {
             let upload_user = UploadUser::find()
                 .filter(upload_user::Column::Id.eq(id))
                 .one(app_data.db_pool.get().unwrap())

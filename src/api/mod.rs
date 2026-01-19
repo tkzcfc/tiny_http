@@ -20,7 +20,7 @@ pub struct AppState {
 }
 
 pub fn map_db_err(err: sea_orm::DbErr) -> actix_web::Error {
-    actix_web::error::ErrorInternalServerError(format!("sqlx error:{}", err.to_string()))
+    actix_web::error::ErrorInternalServerError(format!("sqlx error:{}", err))
 }
 
 // 用户鉴权
