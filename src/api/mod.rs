@@ -8,6 +8,7 @@ pub mod log;
 pub mod log_html;
 pub mod statistics;
 pub mod statistics_html;
+pub mod query_ip;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -42,7 +43,7 @@ pub async fn user_authentication(
 
     if !app_data.username.is_empty() || !app_data.password.is_empty() {
         // 验证用户名和密码
-        return if username == app_data.username.as_str() || password == app_data.password.as_str() {
+        return if username == app_data.username.as_str() && password == app_data.password.as_str() {
             Ok(false)
         } else {
             let config = req.app_data::<Config>().cloned().unwrap_or_default();

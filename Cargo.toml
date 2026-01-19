@@ -19,6 +19,7 @@ log = "0.4.21"
 anyhow = "1.0"
 sqlx = { version = "0.7", features = [ "sqlite", "runtime-tokio"] }
 sea-orm = { version = "0.12", features = ["sqlx-sqlite", "runtime-tokio"] }
+regex = "1.10.4"
 
 [profile.release]
 panic = "abort"

@@ -4,91 +4,250 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Post Request Example</title>
+    <title>错误日志管理系统</title>
     <style>
+        :root {
+            --primary-color: #6a95ff;
+            --danger-color: #ff6666;
+            --warning-color: #fa8c35;
+            --success-color: #1bd1a5;
+            --light-bg: #f5f5f5;
+            --dark-text: #161823;
+            --border-color: #ddd;
+            --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            color: #333;
+            line-height: 1.6;
         }
 
         .container {
             display: flex;
             height: 100vh;
+            overflow: hidden;
         }
 
+        /* 左侧菜单样式 */
         .menu {
             width: 30%;
-            background-color: #f5f5f5;
-            padding: 10px;
-            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
-            overflow-y: auto;
+            min-width: 300px;
+            background: white;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
         }
 
-        .menu ul {
+        .menu-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            background: linear-gradient(135deg, var(--primary-color), #5a7fff);
+            color: white;
+        }
+
+        .menu-header h2 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .menu-header h2 i {
+            font-size: 1.3rem;
+        }
+
+        .menu-header .stats {
+            display: flex;
+            gap: 15px;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .menu-list-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        #menu-list {
             list-style: none;
             padding: 0;
             margin: 0;
         }
 
-        .menu li {
-            padding: 15px;
-            background-color: #ffffff;
-            margin-bottom: 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-
-        .menu li:hover {
-            background-color: #e0e0e0;
-        }
-
-        .menu li.active {
-            background-color: #6a95ff;
-            color: white;
-        }
-
-
         #menu-list li {
             position: relative;
-            padding-left: 20px;
+            padding: 15px;
+            background-color: white;
             margin-bottom: 10px;
-            list-style: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--card-shadow);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #menu-list li:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border-color: var(--primary-color);
+        }
+
+        #menu-list li.active {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
         }
 
         /* 红点的样式 */
         #menu-list li::before {
             content: '';
             position: absolute;
-            left: 0;
+            left: 15px;
             top: 50%;
             width: 10px;
             height: 10px;
             border-radius: 50%;
             transform: translateY(-50%);
+            transition: all 0.3s ease;
         }
 
         /* 各个项的小圆点颜色 */
         #menu-list .red-dot::before {
-            background-color: #ff2121;
-            left: 2px;
+            background-color: var(--danger-color);
+            box-shadow: 0 0 8px rgba(255, 33, 33, 0.5);
         }
 
         #menu-list .green-dot::before {
-            background-color: #1bd1a5;
-            left: 2px;
+            background-color: var(--success-color);
+            box-shadow: 0 0 8px rgba(27, 209, 165, 0.5);
         }
 
         #menu-list .yellow-dot::before {
-            background-color: #fa8c35;
-            left: 2px;
+            background-color: var(--warning-color);
+            box-shadow: 0 0 8px rgba(250, 140, 53, 0.5);
         }
 
+        .error-info {
+            flex: 1;
+            margin-left: 20px;
+        }
+
+        .error-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+            font-size: 0.95rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        .error-meta {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* 分页控件样式 */
+        .pagination {
+            padding: 15px;
+            border-top: 1px solid var(--border-color);
+            background: white;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .pagination-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .pagination-info {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .page-btn {
+            padding: 8px 15px;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .page-btn:hover:not(:disabled) {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        .page-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .page-input {
+            width: 60px;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .page-size-select {
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: white;
+        }
+
+        .clear-all-btn {
+            padding: 8px 15px;
+            background: var(--danger-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .clear-all-btn:hover {
+            background: #ff4c4c;
+            transform: translateY(-1px);
+        }
+
+        /* 右侧内容样式 */
         .content {
             flex: 1;
             padding: 20px;
             background-color: #fafafa;
             overflow-y: auto;
             position: relative;
+            display: flex;
+            flex-direction: column;
         }
 
         .loading {
@@ -98,492 +257,1275 @@
             height: 100%;
             font-size: 18px;
             color: #666;
+            flex-direction: column;
+            gap: 15px;
         }
 
-        .red-button {
-            display: block;
-            padding: 10px 20px;
-            background-color: #ff6666;
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .content-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .time-badge {
+            background: linear-gradient(135deg, var(--primary-color), #5a7fff);
             color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            box-shadow: 0 2px 5px rgba(106, 149, 255, 0.3);
         }
 
-        .red-button:hover {
-            background-color: #ff4c4c;
+        .stats-container {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
 
-        .red-button:active {
-            background-color: #ff4c4c;
-            position:relative;
-            top:1px;
+        .stat-badge {
+            background-color: var(--warning-color);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: inline-block;
+        }
+
+        .stat-badge.success {
+            background-color: var(--success-color);
         }
 
         .content-text {
             white-space: pre-wrap;
-            color: #161823;
-            display: inline-block;
-            padding: 3px 10px;
-            font-weight: bold;
-            border-radius: 5px;
+            color: var(--dark-text);
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: var(--card-shadow);
+            font-size: 0.95rem;
+            line-height: 1.8;
+            margin-bottom: 20px;
+            border-left: 4px solid var(--primary-color);
         }
 
-        /* 时间显示卡片背景 */
-        .badge {
-            background-color: #007bff;
+        /* 表格样式 */
+        .table-container {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            max-height: 500px; /* 设置最大高度，出现滚动条 */
+            overflow-y: auto; /* 垂直滚动 */
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        /* 表头固定 */
+        .table thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            position: sticky;
+            top: 0; /* 根据容器顶部固定 */
+            z-index: 10;
+        }
+
+        .table th {
+            padding: 16px;
+            text-align: left;
             color: white;
-            padding: 5px 10px;
-            border-radius: 12px;
+            font-weight: 500;
             font-size: 14px;
-            display: inline-block;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
-        /* 点击查看按钮 */
-        .grey-button {
-            box-shadow:inset 0px 1px 0px 0px #ffffff;
-            background:linear-gradient(to bottom, #ffffff 5%, #f6f6f6 100%);
-            background-color:#ffffff;
-            border-radius:6px;
-            border:1px solid #dcdcdc;
-            display:inline-block;
-            cursor:pointer;
-            color:#666666;
-            font-family:Arial;
-            font-size:15px;
-            font-weight:bold;
-            padding:6px 24px;
-            text-decoration:none;
-            text-shadow:0px 1px 0px #ffffff;
-        }
-        .grey-button:hover {
-            background:linear-gradient(to bottom, #dfdfdf 5%, #ededed 100%);
-            background-color:#dfdfdf;
-        }
-        .grey-button:active {
-            position:relative;
-            top:1px;
+        .table tbody {
+            display: table-row-group !important;
         }
 
-        /*弹窗样式*/
+        .table tbody tr {
+            display: table-row !important;
+        }
 
-        /* 背景遮罩 */
+        .table tbody td {
+            display: table-cell !important;
+            padding: 16px;
+            border-bottom: 1px solid #f0f0f0;
+            color: #333;
+        }
+
+        .table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .table tbody tr:hover {
+            background-color: #f7f9ff;
+        }
+
+        /* 按钮样式 */
+        .action-buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color), #5a7fff);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(106, 149, 255, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, var(--danger-color), #ff4c4c);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(255, 102, 102, 0.4);
+        }
+
+        .btn-outline {
+            background: white;
+            color: #666;
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-outline:hover {
+            background: #f5f5f5;
+            border-color: #999;
+        }
+
+        /* 弹窗样式 */
         .modal-overlay {
-            display: none; /* 默认隐藏 */
+            display: none;
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.3);
-            z-index: 1;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(3px);
+            z-index: 1000;
+            animation: fadeIn 0.3s ease;
         }
 
-        /* 弹窗样式 */
         .modal {
-            display: none; /* 默认隐藏 */
+            display: none;
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             background-color: white;
+            padding: 0;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            z-index: 1001;
+            width: 70%;
+            min-width: 400px;
+            max-height: 85vh;
+            border-radius: 15px;
+            overflow: hidden;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -60%);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, -50%);
+            }
+        }
+
+        .modal-header {
             padding: 20px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-            z-index: 2;
-            width: 50%;
-            min-width: 300px;
-            max-height: 80%; /* 限制最大高度 */
-            overflow-y: auto; /* 启用垂直滚动条 */
-            border-radius: 8px;
-        }
-
-        /* 关闭按钮 */
-        .close-button {
-            background-color: red;
+            background: linear-gradient(135deg, var(--primary-color), #5a7fff);
             color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .close-button {
+            background: none;
             border: none;
-            padding: 5px 10px;
+            color: white;
+            font-size: 1.5rem;
             cursor: pointer;
-            position: absolute;
-            top: 10px;
-            right: 10px;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background-color 0.3s ease;
         }
 
-        /* 自定义弹窗内容 */
+        .close-button:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
         .modal-content {
-            margin-top: 40px;
+            padding: 20px;
+            max-height: calc(85vh - 70px);
+            overflow-y: auto;
         }
 
+        .log-content {
+            white-space: pre-wrap;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        /* 全局加载遮罩层 */
+        .global-loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(5px);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            display: none;
+        }
+
+        .global-loading-content {
+            text-align: center;
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+            max-width: 400px;
+            width: 80%;
+        }
+
+        .global-loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        .global-loading-text {
+            font-size: 1.1rem;
+            color: var(--dark-text);
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+
+        .global-loading-subtext {
+            font-size: 0.9rem;
+            color: #666;
+            line-height: 1.5;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #999;
+            gap: 15px;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            opacity: 0.5;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 1024px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .menu {
+                width: 100%;
+                height: 50vh;
+            }
+
+            .content {
+                height: 50vh;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .modal {
+                width: 90%;
+                min-width: unset;
+            }
+
+            .table {
+                display: block;
+                overflow-x: auto;
+            }
+
+            .pagination {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 15px;
+            }
+
+            .pagination-controls {
+                justify-content: center;
+            }
+        }
     </style>
 </head>
-
-{LOG_CONTENT_HEAD_CODE}
 
 <body>
 <div class="container">
     <!-- 左侧菜单 -->
     <div class="menu">
-        <ul id="menu-list">
-{MENU_ITEM_CODE}
-        </ul>
+        <div class="menu-header">
+            <h2>📋 错误日志列表</h2>
+            <div class="stats">
+                <span>总计: <span id="total-count">0</span></span>
+                <span>未解决: <span id="pending-count">0</span></span>
+                <span>已解决: <span id="solved-count">0</span></span>
+            </div>
+        </div>
+
+        <div class="menu-list-container">
+            <ul id="menu-list">
+                <!-- 错误列表将通过JS动态加载 -->
+            </ul>
+
+            <div id="empty-list" class="empty-state" style="display: none;">
+                <div style="font-size: 3rem; opacity: 0.3;">📭</div>
+                <h3>暂无错误日志</h3>
+                <p>当前没有需要处理的错误</p>
+            </div>
+        </div>
+
+        <!-- 分页控件 -->
+        <div class="pagination">
+            <div class="pagination-info">
+                第 <span id="current-page">1</span> 页 / 共 <span id="total-pages">1</span> 页
+            </div>
+
+            <div class="pagination-controls">
+                <button class="page-btn" id="first-page" onclick="goToPage(1)" disabled>«</button>
+                <button class="page-btn" id="prev-page" onclick="goToPrevPage()" disabled>‹</button>
+
+                <input type="number"
+                       class="page-input"
+                       id="page-input"
+                       min="1"
+                       value="1"
+                       onchange="goToPage(parseInt(this.value))">
+
+                <button class="page-btn" id="next-page" onclick="goToNextPage()" disabled>›</button>
+                <button class="page-btn" id="last-page" onclick="goToPage(0)" disabled>»</button>
+            </div>
+
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <select class="page-size-select" id="page-size" onchange="changePageSize()">
+                    <option value="10">10条/页</option>
+                    <option value="20" selected>20条/页</option>
+                    <option value="30">30条/页</option>
+                    <option value="50">50条/页</option>
+                </select>
+
+                <!-- 添加 id 用于JS控制显示/隐藏 -->
+                <button class="clear-all-btn" id="clear-all-btn" onclick="removeAllLogs()" style="display: none;">
+                    🗑️ 清空
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- 右侧内容 -->
     <div class="content" id="content-area">
-        <div>点击左侧的选项以查看详情</div>
+        <div class="empty-state">
+            <div style="font-size: 3rem; opacity: 0.3;">👈</div>
+            <h3>选择错误查看详情</h3>
+            <p>点击左侧的错误项查看详细信息</p>
+        </div>
     </div>
 </div>
-
 
 <!-- 模态窗口 -->
 <div class="modal-overlay" id="modalOverlay"></div>
 
 <div class="modal" id="modal">
-    <button class="close-button" id="closeModalButton">关闭</button>
+    <div class="modal-header">
+        <h3>📄 日志详情</h3>
+        <button class="close-button" id="closeModalButton">×</button>
+    </div>
     <div class="modal-content" id="modal-content-area">
+        <!-- 弹窗内容 -->
+    </div>
+</div>
 
+<!-- 全局加载遮罩 -->
+<div class="global-loading-overlay" id="globalLoading">
+    <div class="global-loading-content">
+        <div class="global-loading-spinner"></div>
+        <div class="global-loading-text" id="globalLoadingText">处理中...</div>
+        <div class="global-loading-subtext" id="globalLoadingSubtext">正在清空日志，这可能需要一些时间，请稍候...</div>
     </div>
 </div>
 
 <script>
-    // 页面加载时定位到带有 hash 的 item 并点击
+    // 统一的请求处理器
+    class RequestHandler {
+        constructor() {
+            this.controllers = {
+                menu: null,
+                content: null,
+                userLog: null
+            };
+        }
+
+        // 创建请求
+        async makeRequest(endpoint, data, type = 'menu', timeout = 30000) {
+            // 取消同类型的上一个请求
+            if (this.controllers[type]) {
+                this.controllers[type].abort();
+            }
+
+            // 创建新的 AbortController
+            const controller = new AbortController();
+            this.controllers[type] = controller;
+
+            // 设置超时
+            const timeoutId = setTimeout(() => {
+                controller.abort();
+            }, timeout);
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    body: JSON.stringify(data),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    signal: controller.signal,
+                    credentials: 'same-origin'
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    console.log(`HTTP ${response.status}: ${response.statusText}`);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const text = await response.text();
+                console.log('原始响应:', text);
+                const json = JSON.parse(text);
+                console.log('解析后的 JSON:', json);
+                return json;
+
+                // return await response.json();
+            } catch (error) {
+                clearTimeout(timeoutId);
+
+                // 如果是取消错误，不处理
+                if (error.name === 'AbortError') {
+                    throw error;
+                }
+
+                // 检查是否是扩展干扰
+                if (error.message &&
+                    error.message.includes('asynchronous response') &&
+                    error.message.includes('message channel closed')) {
+
+                    console.warn('浏览器扩展干扰检测到，建议：');
+                    console.warn('- 暂时禁用广告拦截器');
+                    console.warn('- 检查隐私保护扩展设置');
+
+                    // 尝试不使用 signal 再请求一次
+                    console.log('尝试无信号请求...');
+                    try {
+                        const retryResponse = await fetch(endpoint, {
+                            method: 'POST',
+                            body: JSON.stringify(data),
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+
+                        if (retryResponse.ok) {
+                            return await retryResponse.json();
+                        }
+                    } catch (retryError) {
+                        // 忽略重试错误
+                    }
+                }
+
+                throw error;
+            } finally {
+                // 清理 controller
+                if (this.controllers[type] === controller) {
+                    this.controllers[type] = null;
+                }
+            }
+        }
+
+        // 取消请求
+        cancelRequest(type) {
+            if (this.controllers[type]) {
+                this.controllers[type].abort();
+                this.controllers[type] = null;
+            }
+        }
+    }
+
+    // 初始化请求处理器
+    const requestHandler = new RequestHandler();
+
+    // 页面状态（简化版本）
+    let currentState = {
+        page: 1,
+        pageSize: 20,
+        totalPages: 1,
+        totalCount: 0,
+        pendingCount: 0,
+        solvedCount: 0,
+        activeShowMenuItemId: null,
+        menuData: [],
+        isAdmin: false
+    };
+
+    // 页面加载时初始化
     window.onload = function() {
+        // 从URL获取参数
         const urlParams = new URLSearchParams(window.location.search);
         const hash = urlParams.get('hash');
-        if (hash) {
-            const item = document.getElementById('item-' + hash);
-            if (item) {
-                item.scrollIntoView({ behavior: "smooth", block: "center" }); // 平滑滚动到该元素
-                item.click(); // 自动触发点击事件
+        const page = parseInt(urlParams.get('page')) || 1;
+        const pageSize = parseInt(urlParams.get('pageSize')) || 20;
+
+        // 设置分页参数
+        currentState.page = page;
+        currentState.pageSize = pageSize;
+        document.getElementById('page-size').value = pageSize;
+        document.getElementById('page-input').value = page;
+
+        // 加载第一页数据
+        loadMenuData(page, pageSize).then(() => {
+            // 如果有hash参数，定位到对应的item
+            if (hash) {
+                const item = document.getElementById('item-' + hash);
+                if (item) {
+                    item.scrollIntoView({ behavior: "smooth", block: "center" });
+                    item.click();
+                }
+            }
+        });
+    };
+
+    // 监听popstate事件，支持浏览器前进后退
+    window.addEventListener('popstate', function(event) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const page = parseInt(urlParams.get('page')) || 1;
+        const pageSize = parseInt(urlParams.get('pageSize')) || currentState.pageSize;
+
+        if (page !== currentState.page || pageSize !== currentState.pageSize) {
+            currentState.page = page;
+            currentState.pageSize = pageSize;
+            document.getElementById('page-size').value = pageSize;
+            document.getElementById('page-input').value = page;
+            loadMenuData(page, pageSize);
+        }
+    });
+
+    // 页面卸载时清理所有请求
+    window.addEventListener('beforeunload', () => {
+        requestHandler.cancelRequest('menu');
+        requestHandler.cancelRequest('content');
+        requestHandler.cancelRequest('userLog');
+    });
+
+    // 加载菜单数据
+    async function loadMenuData(page = 1, pageSize = 20) {
+        try {
+            showLoading(true);
+
+            const pathSegments = window.location.pathname.split('/');
+            const logType = pathSegments[pathSegments.length - 1];
+
+            // 使用 RequestHandler 发起请求
+            const data = await requestHandler.makeRequest('/api/log_list', {
+                page: page,
+                page_size: pageSize,
+                log_type: logType,
+            }, 'menu');
+
+            // 更新状态
+            currentState.menuData = data.items || [];
+            currentState.totalCount = data.total || 0;
+            currentState.pendingCount = data.pending || 0;
+            currentState.solvedCount = data.solved || 0;
+            currentState.totalPages = data.total_pages || 1;
+            currentState.isAdmin = data.is_admin || false;
+
+            // 更新UI
+            updatePaginationUI();
+            updateStatsUI();
+            renderMenuList();
+            updateAdminControls();
+
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('请求被取消');
+                return;
+            }
+            console.error('加载菜单数据失败:', error);
+            showErrorMessage('加载失败: ' + (error.message || '未知错误'));
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    // 显示/隐藏加载状态
+    function showLoading(show) {
+        const menuList = document.getElementById('menu-list');
+        const emptyState = document.getElementById('empty-list');
+
+        if (show) {
+            menuList.innerHTML = '<div class="loading"><div class="loading-spinner"></div><div>加载中...</div></div>';
+            emptyState.style.display = 'none';
+        }
+    }
+
+    // 更新分页UI
+    function updatePaginationUI() {
+        const pageInput = document.getElementById('page-input');
+        const currentPageSpan = document.getElementById('current-page');
+        const totalPagesSpan = document.getElementById('total-pages');
+
+        pageInput.value = currentState.page;
+        currentPageSpan.textContent = currentState.page;
+        totalPagesSpan.textContent = currentState.totalPages;
+
+        // 更新按钮状态
+        const firstPageBtn = document.getElementById('first-page');
+        const prevPageBtn = document.getElementById('prev-page');
+        const nextPageBtn = document.getElementById('next-page');
+        const lastPageBtn = document.getElementById('last-page');
+
+        firstPageBtn.disabled = currentState.page <= 1;
+        prevPageBtn.disabled = currentState.page <= 1;
+        nextPageBtn.disabled = currentState.page >= currentState.totalPages;
+        lastPageBtn.disabled = currentState.page >= currentState.totalPages;
+
+        // 更新页面输入框范围
+        pageInput.max = currentState.totalPages;
+        pageInput.min = 1;
+    }
+
+    // 更新统计信息UI
+    function updateStatsUI() {
+        document.getElementById('total-count').textContent = currentState.totalCount;
+        document.getElementById('pending-count').textContent = currentState.pendingCount;
+        document.getElementById('solved-count').textContent = currentState.solvedCount;
+    }
+
+    // 渲染菜单列表
+    function renderMenuList() {
+        const menuList = document.getElementById('menu-list');
+        const emptyState = document.getElementById('empty-list');
+
+        if (currentState.menuData.length === 0) {
+            menuList.innerHTML = '';
+            emptyState.style.display = 'flex';
+            return;
+        }
+
+        emptyState.style.display = 'none';
+
+        const menuItems = currentState.menuData.map(item => {
+            const dotClass = getDotClass(item.status);
+            const isActive = currentState.activeShowMenuItemId === item.hash ? 'active' : '';
+
+            return `
+                <li id="item-${item.hash}"
+                    class="${dotClass} ${isActive}"
+                    onclick="onClickMenu('${item.hash}')">
+                    <div class="error-info">
+                        <div class="error-title">${escapeHtml(item.message || '')}</div>
+                        <div class="error-meta">
+                            <span>${formatDate(item.first_time)}</span>
+                            <span>${item.total_count}次</span>
+                        </div>
+                    </div>
+                </li>
+            `;
+        }).join('');
+
+        menuList.innerHTML = menuItems;
+    }
+
+    // 更新管理员控制按钮的显示
+    function updateAdminControls() {
+        const clearAllBtn = document.getElementById('clear-all-btn');
+
+        if (clearAllBtn) {
+            if (currentState.isAdmin) {
+                clearAllBtn.style.display = 'block';
+            } else {
+                clearAllBtn.style.display = 'none';
             }
         }
     }
 
-    let activeRequestController = null; // 用来存储上一次请求的控制器
-    let activeShowMenuItemId = null;
+    // 获取圆点样式类
+    function getDotClass(status) {
+        switch(status) {
+            case 1: return 'green-dot';
+            case -1: return 'yellow-dot';
+            default: return 'red-dot';
+        }
+    }
 
-    function onClickMenu(id) {
-        // 更新 URL 但不刷新页面
-        const newUrl = new URL(window.location.href);
-        newUrl.searchParams.set('hash', id);
-        window.history.pushState(null, '', newUrl);
+    // 点击菜单项
+    async function onClickMenu(id) {
+        try {
+            // 更新URL
+            updateURL({ hash: id, page: currentState.page, pageSize: currentState.pageSize });
+            currentState.activeShowMenuItemId = id;
 
-        activeShowMenuItemId = id;
-        // 改变左侧选中状态
-        const items = document.querySelectorAll('#menu-list li');
-        items.forEach(item => item.classList.remove('active'));
+            // 更新选中状态
+            document.querySelectorAll('#menu-list li').forEach(item => {
+                item.classList.remove('active');
+            });
 
-        const itemTarget = document.getElementById(`item-${id}`);
-        itemTarget.classList.add('active');
+            const itemTarget = document.getElementById(`item-${id}`);
+            if (itemTarget) {
+                itemTarget.classList.add('active');
+            }
 
-        // 显示加载中的动画
+            // 显示加载状态
+            const contentArea = document.getElementById('content-area');
+            contentArea.innerHTML = '<div class="loading"><div class="loading-spinner"></div><div>加载中...</div></div>';
+
+            // 使用 RequestHandler 发起请求
+            const data = await requestHandler.makeRequest('/api/log_content', {
+                hash: id
+            }, 'content');
+
+            renderContent(data, id);
+
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('请求被取消');
+                return;
+            }
+
+            console.error('加载详情失败:', error);
+            const contentArea = document.getElementById('content-area');
+            contentArea.innerHTML = `
+                <div style="text-align: center; padding: 40px;">
+                    <h3 style="color: var(--danger-color); margin-bottom: 20px;">加载失败</h3>
+                    <p style="margin-bottom: 20px; color: #666;">${error.message}</p>
+                    <button class="btn btn-danger" onclick="onClickMenu('${id}')">
+                        🔄 重试
+                    </button>
+                </div>
+            `;
+        }
+    }
+
+    // 渲染内容区域
+    function renderContent(data, id) {
         const contentArea = document.getElementById('content-area');
-        contentArea.innerHTML = '<div class="loading">加载中...</div>';
 
-        // 如果有上一个未完成的请求，取消它
-        if (activeRequestController) {
-            activeRequestController.abort();
+        // 处理消息
+        let message = data.message || '';
+        message = message.replace(/^\s+/, '');
+
+        // 生成按钮
+        let actionButton = '';
+        let resolutionTimeScript = '';
+
+        // 更新菜单项圆点
+        const itemTarget = document.getElementById(`item-${id}`);
+        if (itemTarget) {
+            itemTarget.classList.remove('red-dot', 'green-dot', 'yellow-dot');
+            itemTarget.classList.add(getDotClass(data.status));
         }
 
-        // 创建一个新的 AbortController
-        activeRequestController = new AbortController();
+        // 根据状态生成按钮
+        if (data.status === 1) {
+            if (data.can_remove) {
+                actionButton = `
+                    <button class="btn btn-danger" onclick="onClickRemove('${id}')">
+                        🗑️ 删除
+                    </button>
+                `;
+            }
+            resolutionTimeScript = `
+                <div class="stat-badge success">
+                    最后解决时间: ${formatDate(data.resolution_time) || '未知'}
+                </div>
+            `;
+        } else if (data.status === -1) {
+            actionButton = `
+                <button class="btn btn-primary" onclick="onClickSolve('${id}')">
+                    ✅ 标记为已解决
+                </button>
+            `;
+        } else {
+            actionButton = `
+                <button class="btn btn-primary" onclick="onClickSolve('${id}')">
+                    ✅ 标记为已解决
+                </button>
+            `;
+        }
 
-        // 发起 POST 请求
-        fetch('/api/log_content', {
-            method: 'POST',
-            body: JSON.stringify({ hash: id }),
-            headers: { 'Content-Type': 'application/json' },
-            signal: activeRequestController.signal // 将控制器与请求关联
-        })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('请求失败');
-                }
-                return response.text();
-            })
-            .then(content => {
-                try {
-                    let data = JSON.parse(content);
+        // 生成用户列表HTML
+        const userListHtml = (data.user_list || []).map(user => generateUserListHtml(user)).join('');
 
-                    // 具体消息信息
-                    let message = data.message;
-                    message = message.replace(/^\s+/, '')
+        // 构建内容HTML
+        contentArea.innerHTML = `
+            <div style="display: flex; flex-direction: column; height: 100%; gap: 20px;">
+                <!-- 头部信息 -->
+                <div class="content-header" style="flex-shrink: 0;">
+                    <div class="time-badge">
+                        上报时间: ${formatDate(data.first_time)} - ${formatDate(data.last_time)}
+                    </div>
+                    <div class="stats-container">
+                        ${resolutionTimeScript}
+                        <div class="stat-badge">
+                            上报次数: ${data.total_count || 0}
+                        </div>
+                    </div>
+                </div>
 
-                    // 解决按钮
-                    let BUTTON_SCRIPT = `<button class="red-button" id="btn-solve-${id}" style="width: 100%;bottom: 2px;" onclick="onClickSolve('${id}')">解决</button>`;
-                    // 最后修复时间
-                    let RESOLUTION_TIME_SCRIPT = `<p style="background-color: #ff7500; color: white; border-radius: 12px; padding: 5px 10px; display: inline-block; font-size: 14px;">最后解决时间:${data.resolution_time}</p>`;
+                <!-- 错误消息 -->
+                <div class="content-text" style="flex-shrink: 0;">
+                    ${escapeHtml(message)}
+                </div>
 
-                    // 移除各种提示点
-                    itemTarget.classList.remove('red-dot', 'green-dot', 'yellow-dot');
-                    //  0 未解决， 1 已解决,  -1已解决之后又上报了
-                    // 提示点显示
-                    if(data.status === 1) {
-                        if(data.can_remove) {
-                            BUTTON_SCRIPT = `<button class="red-button" id="btn-solve-${id}" style="width: 100%;bottom: 2px;" onclick="onClickRemove('${id}')">删除</button>`;
-                        }
-                        else {
-                            BUTTON_SCRIPT = "";
-                        }
-                        itemTarget.classList.add('green-dot');
-                    }
-                    else if (data.status === -1) {
-                        itemTarget.classList.add('yellow-dot');
-                    }
-                    else {
-                        RESOLUTION_TIME_SCRIPT = "";
-                        itemTarget.classList.add('red-dot');
-                    }
+                <!-- 可滚动的表格容器 -->
+                <div style="flex: 1; overflow-y: auto; min-height: 0;">
+                    <!-- 用户列表表格 -->
+                    <div class="table-container" style="height: 100%;">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>玩家</th>
+                                    <th>时间</th>
+                                    <th>日志信息</th>
+                                    <th>包名</th>
+                                    <th>导航服</th>
+                                    <th>版本</th>
+                                    <th>IP地址</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${userListHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
 
-                    // 时间段
-                    let time_str = "上报时间: " + fmtTimeStr(data.first_time) + " - " + fmtTimeStr(data.last_time)
-
-                    let user_list_html = data.user_list.map((ele) => {
-                        return generalUserListHtml(ele);
-                    }).join("\n");
-
-
-                    contentArea.innerHTML = `
-<div style="display: flex; flex-direction: column; height: 100%;">
-    <!-- 让 span 和 p 保持在同一行 -->
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span class="badge badge-primary" style="flex-shrink: 0;"> ${time_str} </span>
-        ${RESOLUTION_TIME_SCRIPT}
-        <p style="background-color: #ff7500; color: white; border-radius: 12px; padding: 5px 10px; display: inline-block; font-size: 14px;">上报次数:${data.total_count}</p>
-     </div>
-    <p class="content-text">
-${(message)}
-    </p>
-
-    <!-- 玩家列表展示 -->
-    <div style="
-    flex-grow: 1;
-    overflow: auto;
-    ">
-<!--        <table class="table" style="border-collapse: collapse; width: 100%;">-->
-        <table class="table" style="
-            border-collapse: separate; /* 确保边框和单元格之间有分离 */
-            width: 100%;
-            background-color: #f5f5f5;
-            border: 2px solid #ddd; /* 设置外边框宽度和颜色 */
-            border-radius: 10px; /* 添加圆角 */
-            box-shadow: 5px 0 5px rgba(0, 0, 0, 0.1); /* 设置阴影效果 */
-            overflow: hidden;">
-
-          <thead>
-            <tr>
-              <th scope="col" style="border: 1px solid black; padding: 8px;">玩家</th>
-              <th scope="col" style="border: 1px solid black; padding: 8px;">时间</th>
-              <th scope="col" style="border: 1px solid black; padding: 8px;">日志信息</th>
-              <th scope="col" style="border: 1px solid black; padding: 8px;">包名</th>
-              <th scope="col" style="border: 1px solid black; padding: 8px;">导航服</th>
-              <th scope="col" style="border: 1px solid black; padding: 8px;">版本</th>
-              <th scope="col" style="border: 1px solid black; padding: 8px;">IP地址</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${user_list_html}
-          </tbody>
-        </table>
-    </div>
-
-    <div style="height: 10px;"> </div>
-    ${BUTTON_SCRIPT}
-</div>`;
-
-                } catch (error) {
-                    contentArea.innerHTML = `
-<div>
-    <p class="content-text">
-        ${escapeHtml(content)}
-    </p>
-</div>`;
-                }
-            })
-            .catch(error => {
-                if (error.name === 'AbortError') {
-                    console.log('请求被取消');
-                    return; // 如果是取消请求，则不显示错误
-                }
-                // 请求失败时显示重试按钮
-                contentArea.innerHTML = `
-          <div>
-            <p>加载失败，请重试。</p>
-            <button class="red-button" onclick="onClickMenu('${id}')">重试</button>
-          </div>
+                <!-- 操作按钮 -->
+                ${actionButton ? `
+                    <div class="action-buttons" style="flex-shrink: 0;">
+                        ${actionButton}
+                    </div>
+                ` : ''}
+            </div>
         `;
+    }
+
+    // 生成用户列表行
+    function generateUserListHtml(userData) {
+        try {
+            // 调试：检查每条数据
+            // console.log('生成行数据:', userData);
+
+            // 确保所有字段都有值
+            const user = escapeHtml(userData.user || '');
+            const time = userData.time || '';
+            const id = userData.id;
+            const packageName = escapeHtml(userData.package || '');
+            const navUrl = escapeHtml(userData.nav_url || '');
+            const version = escapeHtml(userData.version || '');
+            const ip = escapeHtml(userData.ip || '');
+
+            return `
+            <tr>
+                <td>${user}</td>
+                <td>${time}</td>
+                <td>
+                    <button class="btn btn-outline" onclick="onClickShowLogAndPopModel(${id})">
+                        👁️ 查看
+                    </button>
+                </td>
+                <td>${packageName}</td>
+                <td>${navUrl}</td>
+                <td>${version}</td>
+                <td>${ip}</td>
+            </tr>
+        `;
+        } catch (error) {
+            console.error('生成用户列表行时出错:', error, userData);
+            return '<tr><td colspan="7">数据解析错误</td></tr>';
+        }
+    }
+
+    // 分页功能
+    function goToPage(page) {
+        if (page === 0) page = currentState.totalPages; // 最后一页
+        if (page < 1 || page > currentState.totalPages) return;
+
+        currentState.page = page;
+        updateURL({ page: page, pageSize: currentState.pageSize });
+        loadMenuData(page, currentState.pageSize);
+    }
+
+    function goToPrevPage() {
+        if (currentState.page > 1) {
+            goToPage(currentState.page - 1);
+        }
+    }
+
+    function goToNextPage() {
+        if (currentState.page < currentState.totalPages) {
+            goToPage(currentState.page + 1);
+        }
+    }
+
+    function changePageSize() {
+        const pageSize = parseInt(document.getElementById('page-size').value);
+        currentState.pageSize = pageSize;
+        currentState.page = 1; // 重置到第一页
+        updateURL({ page: 1, pageSize: pageSize });
+        loadMenuData(1, pageSize);
+    }
+
+    // 更新URL
+    function updateURL(params) {
+        const url = new URL(window.location.href);
+
+        Object.keys(params).forEach(key => {
+            if (params[key]) {
+                url.searchParams.set(key, params[key]);
+            } else {
+                url.searchParams.delete(key);
+            }
+        });
+
+        window.history.pushState(null, '', url);
+    }
+
+    // 解决错误
+    async function onClickSolve(id) {
+        try {
+            const response = await fetch('/api/log_complete', {
+                method: 'POST',
+                body: JSON.stringify({ hash: id }),
+                headers: { 'Content-Type': 'application/json' },
             });
-    }
 
-    function generalUserListHtml(user_data) {
-        return `
-    <tr>
-      <td style="border: 1px solid black; padding: 8px;">${user_data.user}</td>
-      <td style="border: 1px solid black; padding: 8px;">${user_data.time}</td>
-      <td style="border: 1px solid black; padding: 8px; white-space: nowrap;">
-<!--        <a href="#" onclick="onClickShowLog('${user_data.id}')">点击查看</a>-->
-            <button class="grey-button" onclick="onClickShowLogAndPopModel('${user_data.id}')">查看</button>
-      </td>
-      <td style="border: 1px solid black; padding: 8px;">${user_data.package}</td>
-      <td style="border: 1px solid black; padding: 8px;">${user_data.nav_url}</td>
-      <td style="border: 1px solid black; padding: 8px;">${user_data.version}</td>
-      <td style="border: 1px solid black; padding: 8px;">${user_data.ip}</td>
-    </tr>`;
-    }
+            if (!response.ok) {
+                throw new Error('请求失败');
+            }
 
-    function onClickSolve(id) {
-        fetch('/api/log_complete', {
-            method: 'POST',
-            body: JSON.stringify({ hash: id }),
-            headers: { 'Content-Type': 'application/json' },
-        })
-        .then(response => {
-           if (!response.ok) {
-               throw new Error('请求失败');
-           }
-           return response.json();
-       }).then(data=> {
-            console.log("成功");
-            if (activeShowMenuItemId === id){
+            await response.json();
+
+            // 重新加载当前页面数据
+            await loadMenuData(currentState.page, currentState.pageSize);
+
+            // 如果当前正在查看这个错误，刷新内容
+            if (currentState.activeShowMenuItemId === id) {
                 onClickMenu(id);
             }
-       }).catch(error => {
-           alert(`修改失败: ${error}`);
-       })
+
+        } catch (error) {
+            alert(`操作失败: ${error.message}`);
+        }
     }
 
-    function onClickRemove(id) {
-        const result = confirm("是否删除？");
-        if (!result) {
-            return;
-        }
+    // 删除错误
+    async function onClickRemove(id) {
+        const result = confirm("确定要删除这条错误记录吗？此操作不可恢复！");
+        if (!result) return;
 
-        fetch('/api/log_remove', {
-            method: 'POST',
-            body: JSON.stringify({ hash: id }),
-            headers: { 'Content-Type': 'application/json' },
-        })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('请求失败');
-                }
-                return response.json();
-            }).then(data=> {
-            console.log("删除成功");
+        try {
+            const response = await fetch('/api/log_remove', {
+                method: 'POST',
+                body: JSON.stringify({ hash: id }),
+                headers: { 'Content-Type': 'application/json' },
+            });
 
-            if (activeShowMenuItemId === id){
+            if (!response.ok) {
+                throw new Error('请求失败');
+            }
+
+            await response.json();
+
+            // 重新加载菜单数据
+            await loadMenuData(currentState.page, currentState.pageSize);
+
+            // 如果删除的是当前查看的项目，显示空状态
+            if (currentState.activeShowMenuItemId === id) {
                 const contentArea = document.getElementById('content-area');
-                contentArea.innerHTML = '<div class="loading">已删除</div>';
+                contentArea.innerHTML = '<div class="loading">✅ 已删除</div>';
+                currentState.activeShowMenuItemId = null;
             }
 
-            const item = document.getElementById('item-' + id);
-            if (item) {
-                item.remove();
-            }
-        }).catch(error => {
-            alert(`删除失败: ${error}`);
-        })
-    }
-
-    function removeAllLogs(log_type) {
-        const result = confirm("是否清空所有日志？");
-        if (!result) {
-            return;
+        } catch (error) {
+            alert(`删除失败: ${error.message}`);
         }
-
-        fetch('/api/clear_log', {
-            method: 'POST',
-            body: JSON.stringify({ log_type: log_type }),
-            headers: { 'Content-Type': 'application/json' },
-        })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('请求失败');
-                }
-                return response.json();
-            }).then(data=> {
-            console.log("删除成功");
-            location.reload();
-        }).catch(error => {
-            alert(`删除失败: ${error}`);
-        })
     }
 
-    //////////////////////////////////////////////////////////////////// 弹窗 ////////////////////////////////////////////////////////////////////
-    // 获取DOM元素
+    // 清空所有日志
+    async function removeAllLogs() {
+        const result = confirm("确定要清空所有错误日志吗？此操作不可恢复！");
+        if (!result) return;
+
+        try {
+            // 显示全局加载状态
+            showGlobalLoading('正在清空日志...', '这可能需要一些时间，请稍候...');
+
+            const pathSegments = window.location.pathname.split('/');
+            const logType = pathSegments[pathSegments.length - 1];
+
+            const response = await fetch('/api/clear_log', {
+                method: 'POST',
+                body: JSON.stringify({ log_type: logType }),
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            if (!response.ok) {
+                throw new Error('请求失败');
+            }
+
+            const result = await response.json();
+
+            // 隐藏全局加载状态
+            hideGlobalLoading();
+
+            // 重新加载页面
+            setTimeout(() => {
+                location.reload();
+            }, 100);
+
+        } catch (error) {
+            // 隐藏全局加载状态
+            hideGlobalLoading();
+
+            alert(`清空失败: ${error.message}`);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////// Loading功能 ////////////////////////////////////////////////////////////////////
+    // 显示全局加载状态
+    function showGlobalLoading(text = '处理中...', subtext = '') {
+        const globalLoading = document.getElementById('globalLoading');
+        const loadingText = document.getElementById('globalLoadingText');
+        const loadingSubtext = document.getElementById('globalLoadingSubtext');
+
+        if (globalLoading && loadingText) {
+            loadingText.textContent = text;
+            if (subtext && loadingSubtext) {
+                loadingSubtext.textContent = subtext;
+            }
+            globalLoading.style.display = 'flex';
+
+            // 防止用户点击其他内容
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    // 隐藏全局加载状态
+    function hideGlobalLoading() {
+        const globalLoading = document.getElementById('globalLoading');
+        if (globalLoading) {
+            globalLoading.style.display = 'none';
+            document.body.style.overflow = ''; // 恢复滚动
+        }
+    }
+
+    // 在页面卸载时确保隐藏全局 loading
+    window.addEventListener('beforeunload', () => {
+        hideGlobalLoading();
+    });
+
+    //////////////////////////////////////////////////////////////////// 弹窗功能 ////////////////////////////////////////////////////////////////////
     const modalOverlay = document.getElementById('modalOverlay');
     const modal = document.getElementById('modal');
     const closeModalButton = document.getElementById('closeModalButton');
+
     // 关闭弹窗
     closeModalButton.addEventListener('click', closePopModel);
-    // 点击遮罩关闭弹窗
     modalOverlay.addEventListener('click', closePopModel);
-    let activeUserLogRequestController = null; // 用来存储上一次请求的控制器
 
-    // 打开弹窗
-    function onClickShowLogAndPopModel(id) {
-        modalOverlay.style.display = 'block';
-        modal.style.display = 'block';
-        const contentArea = document.getElementById('modal-content-area');
-        contentArea.innerHTML = '<div class="loading">加载中...</div>';
+    // 显示日志详情弹窗
+    async function onClickShowLogAndPopModel(id) {
+        try {
+            // 显示弹窗
+            modalOverlay.style.display = 'block';
+            modal.style.display = 'block';
 
-        cancelUserLogRequest();
-        activeUserLogRequestController = new AbortController();
+            // 显示加载状态
+            const contentArea = document.getElementById('modal-content-area');
+            contentArea.innerHTML = '<div class="loading"><div class="loading-spinner"></div><div>加载日志详情...</div></div>';
 
-        fetch('/api/user_log', {
-            method: 'POST',
-            body: JSON.stringify({ id: id }),
-            headers: { 'Content-Type': 'application/json' },
-            signal: activeRequestController.signal // 将控制器与请求关联
-        }).then(response => {
-                if (!response.ok) {
-                    throw new Error('请求失败');
-                }
-                return response.text();
-            })
-            .then(content => {
-                contentArea.innerHTML = `
-            <h2>日志信息</h2>
-<!--            <div style="border: 1px solid black; padding: 10px;">-->
-            <div style="border: 1px solid black; padding: 10px;">
-                <p style="white-space: pre-wrap;"> ${content} </p>
-            </div>`;
-            })
-            .catch(error => {
-                if (error.name === 'AbortError') {
-                    console.log('请求被取消');
-                    return; // 如果是取消请求，则不显示错误
-                }
-                // 请求失败时显示重试按钮
-                contentArea.innerHTML = `
-          <div>
-            <p>加载失败，请重试。</p>
-            <button class="red-button" onclick="onClickShowLogAndPopModel('${id}')">重试</button>
-          </div>
-        `;
-            });
-    }
+            const data = await requestHandler.makeRequest('/api/user_log', {
+                id: id
+            }, 'userLog');
 
-    function cancelUserLogRequest() {
-        if (activeUserLogRequestController) {
-            activeUserLogRequestController.abort();
-            activeUserLogRequestController = null
+            console.log("recv:", data);
+
+            contentArea.innerHTML = `
+                <h3 style="margin-bottom: 15px;">📋 原始日志</h3>
+                <div class="log-content">
+                    ${escapeHtml(data.logs)}
+                </div>
+            `;
+
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('请求被取消');
+                return;
+            }
+
+            console.error('加载用户日志失败:', error);
+            const contentArea = document.getElementById('modal-content-area');
+            contentArea.innerHTML = `
+                <div style="text-align: center; padding: 20px;">
+                    <h3 style="color: var(--danger-color); margin-bottom: 15px;">加载失败</h3>
+                    <p style="margin-bottom: 15px; color: #666;">${error.message}</p>
+                    <button class="btn btn-danger" onclick="onClickShowLogAndPopModel(${id})">
+                        🔄 重试
+                    </button>
+                </div>
+            `;
         }
     }
 
     function closePopModel() {
         modalOverlay.style.display = 'none';
         modal.style.display = 'none';
-        cancelUserLogRequest();
+
+        // 使用 RequestHandler 取消请求
+        requestHandler.cancelRequest('userLog');
     }
 
+    function showErrorMessage(message) {
+        // 可以创建一个临时的错误提示
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--danger-color);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 9999;
+            animation: slideIn 0.3s ease;
+        `;
+        errorDiv.textContent = message;
+        document.body.appendChild(errorDiv);
 
-    // 2024-09-06 05:57 转为 2024-09-06
-    function fmtTimeStr(str) {
-        return str.split(" ")[0];
+        // 3秒后自动移除
+        setTimeout(() => {
+            errorDiv.remove();
+        }, 3000);
+    }
+
+    // 工具函数
+    function formatDate(timestamp, format = 'YYYY-MM-DD HH:mm:ss') {
+        const date = new Date(timestamp);
+
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        const milliseconds = String(date.getMilliseconds()).padStart(3, '0');
+
+        return format
+            .replace('YYYY', year)
+            .replace('MM', month)
+            .replace('DD', day)
+            .replace('HH', hours)
+            .replace('mm', minutes)
+            .replace('ss', seconds)
+            .replace('SSS', milliseconds);
     }
 
     function escapeHtml(unsafe) {
+        if (!unsafe) return '';
         return unsafe
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
@@ -593,5 +1535,4 @@ ${(message)}
     }
 </script>
 </body>
-
 </html>

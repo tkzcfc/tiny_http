@@ -96,6 +96,7 @@ async fn main() -> anyhow::Result<()> {
         App::new()
             .app_data(web::Data::new(app_state.clone()))
             .service(api::log::api_upload_log)
+            .service(api::log::api_log_list)
             .service(api::log::api_log_content)
             .service(api::log::api_user_log)
             .service(api::log::api_log_complete)
@@ -104,6 +105,7 @@ async fn main() -> anyhow::Result<()> {
             .service(api::log_html::log_content)
             .service(api::statistics::api_upload_statistics)
             .service(api::statistics_html::statistics_users)
+            .service(api::query_ip::api_query_ip_json)
             .service(api::log_html::index)
     })
     .bind(&args.listen_addr)?
