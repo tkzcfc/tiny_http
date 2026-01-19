@@ -1196,9 +1196,7 @@
                 </div>
 
                 <!-- 错误消息 -->
-                <div class="content-text" style="flex-shrink: 0;">
-                    ${escapeHtml(message)}
-                </div>
+                <div class="content-text" style="flex-shrink: 0;">${escapeHtml(message)}</div>
 
                 <!-- 可滚动的表格容器 -->
                 <div style="flex: 1; overflow-y: auto; min-height: 0;">
@@ -1472,13 +1470,9 @@
                 id: id
             }, 'userLog');
 
-            console.log("recv:", data);
-
             contentArea.innerHTML = `
                 <h3 style="margin-bottom: 15px;">📋 原始日志</h3>
-                <div class="log-content">
-                    ${escapeHtml(data.logs)}
-                </div>
+                <div class="log-content">${escapeHtml(data.logs)}</div>
             `;
 
         } catch (error) {
