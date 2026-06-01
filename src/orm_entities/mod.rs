@@ -2,6 +2,15 @@
 
 pub mod prelude;
 
+pub mod admin_user;
+pub mod audit_log;
+pub mod client_stats_breakdown_cache;
+pub mod client_stats_trend_cache;
+pub mod log_type_mapping;
+pub mod schema_version;
 pub mod upload_log;
+pub mod upload_log_resolution;
+pub mod upload_log_source;
 pub mod upload_statistics_cli_cfg;
 pub mod upload_user;
+pub mod upload_user_log;

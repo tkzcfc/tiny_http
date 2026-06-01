@@ -16,6 +16,10 @@ pub struct Model {
     pub total_count: i32,
     pub status: i32,
     pub resolution_time: DateTime,
+    pub resolved_by_user_id: Option<i32>,
+    #[sea_orm(column_type = "custom(\"TINYTEXT\")", nullable)]
+    pub resolved_by_username: Option<String>,
+    pub updated_at: Option<DateTime>,
     #[sea_orm(column_type = "custom(\"TINYTEXT\")")]
     pub log_type: String,
     #[sea_orm(column_type = "Text")]

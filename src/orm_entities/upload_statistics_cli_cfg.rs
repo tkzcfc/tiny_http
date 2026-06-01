@@ -20,6 +20,12 @@ pub struct Model {
     #[sea_orm(column_type = "custom(\"TINYTEXT\")")]
     pub region: String,
     pub time: DateTime,
+    #[sea_orm(column_type = "custom(\"TINYTEXT\")", nullable)]
+    pub bucket_hour: Option<String>,
+    #[sea_orm(column_type = "custom(\"TINYTEXT\")", nullable)]
+    pub bucket_day: Option<String>,
+    #[sea_orm(column_type = "custom(\"TINYTEXT\")", nullable)]
+    pub bucket_month: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

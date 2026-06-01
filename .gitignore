@@ -1,1 +1,4 @@
 target/
+frontend/node_modules/
+target_codex_verify/
+frontend/dist/
