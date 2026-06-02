@@ -76,15 +76,6 @@ pub async fn api_upload_log(
 
         let log_id = if let Some(log_data) = log_data {
             let total_count = log_data.total_count + 1;
-            let mut user_list: Vec<_> = log_data
-                .user_list
-                .split(',')
-                .filter(|id| !id.is_empty())
-                .map(|id| id.to_string())
-                .collect();
-            if user_list.len() < 100 {
-                user_list.push(source_user.id.to_string());
-            }
             let status = if log_data.status == 0 { 0 } else { -1 };
             let log_id = log_data.id;
 
@@ -92,7 +83,6 @@ pub async fn api_upload_log(
             log_active_model.total_count = Set(total_count);
             log_active_model.last_time = Set(now);
             log_active_model.updated_at = Set(Some(now));
-            log_active_model.user_list = Set(user_list.join(","));
             log_active_model.status = Set(status);
             if status == -1 {
                 log_active_model.resolved_by_user_id = Set(None);
@@ -105,7 +95,6 @@ pub async fn api_upload_log(
             upload_log::ActiveModel {
                 id: NotSet,
                 hash: Set(hash_string.clone()),
-                user_list: Set(source_user.id.to_string()),
                 first_time: Set(now),
                 last_time: Set(now),
                 total_count: Set(1),
@@ -316,6 +305,18 @@ pub async fn api_log_list(
 #[derive(Deserialize, Debug)]
 struct LogContentRequestData {
     hash: String,
+    #[serde(default = "default_source_page")]
+    source_page: i32,
+    #[serde(default = "default_source_page_size")]
+    source_page_size: i32,
+}
+
+fn default_source_page() -> i32 {
+    1
+}
+
+fn default_source_page_size() -> i32 {
+    20
 }
 
 #[derive(Serialize, Debug)]
@@ -342,7 +343,11 @@ struct LogContentResponseData {
     hash: String,
     log_type: String,
     log_type_name: String,
-    user_list: Vec<LogContentResponseBriefUserData>,
+    sources: Vec<LogContentResponseBriefUserData>,
+    source_page: i32,
+    source_page_size: i32,
+    source_total: i32,
+    source_total_pages: i32,
     first_time: i64,
     last_time: i64,
     total_count: i32,
@@ -371,7 +376,10 @@ pub async fn api_log_content(
         return Err(actix_web::error::ErrorNotFound("log not found"));
     };
 
-    let user_list = log_sources_for_content(&app_data, logs.id, &logs).await?;
+    let source_page = json_data.source_page.max(1);
+    let source_page_size = json_data.source_page_size.clamp(10, 100);
+    let source_data =
+        log_sources_for_content(&app_data, logs.id, source_page, source_page_size).await?;
 
     let log_type_name =
         display_name_for_log_type(app_data.db_pool.as_ref(), &logs.log_type).await?;
@@ -381,7 +389,11 @@ pub async fn api_log_content(
         hash: logs.hash,
         log_type: logs.log_type,
         log_type_name,
-        user_list,
+        sources: source_data.items,
+        source_page,
+        source_page_size,
+        source_total: source_data.total,
+        source_total_pages: source_data.total_pages,
         first_time: logs.first_time.and_utc().timestamp(),
         last_time: logs.last_time.and_utc().timestamp(),
         total_count: logs.total_count,
@@ -662,6 +674,12 @@ struct UserLogRequestData {
 #[derive(Serialize, Debug)]
 struct UserLogResponseData {
     id: i32,
+    package: Option<String>,
+    nav_url: Option<String>,
+    version: Option<String>,
+    user: Option<String>,
+    ip: Option<String>,
+    time: Option<String>,
     logs: String,
 }
 
@@ -672,22 +690,36 @@ pub async fn api_user_log(
     json_data: web::Json<UserLogRequestData>,
 ) -> actix_web::Result<HttpResponse> {
     require_user(&session, &app_data).await?;
+    let user_data = UploadUser::find_by_id(json_data.id)
+        .one(app_data.db_pool.as_ref())
+        .await
+        .map_err(map_db_err)?;
     if let Some(raw_log) = user_raw_log(&app_data, json_data.id).await? {
         Ok(HttpResponse::Ok().json(UserLogResponseData {
             id: json_data.id,
+            package: user_data.as_ref().map(|user| user.package.clone()),
+            nav_url: user_data.as_ref().map(|user| user.nav_url.clone()),
+            version: user_data.as_ref().map(|user| user.version.clone()),
+            user: user_data.as_ref().map(|user| user.user.clone()),
+            ip: user_data.as_ref().map(|user| user.ip.clone()),
+            time: user_data
+                .as_ref()
+                .map(|user| user.time.format("%Y-%m-%d %H:%M:%S%.3f").to_string()),
             logs: if raw_log.is_empty() {
                 format!("No logs for id {}", json_data.id)
             } else {
                 raw_log
             },
         }))
-    } else if let Some(user_data) = UploadUser::find_by_id(json_data.id)
-        .one(app_data.db_pool.as_ref())
-        .await
-        .map_err(map_db_err)?
-    {
+    } else if let Some(user_data) = user_data {
         Ok(HttpResponse::Ok().json(UserLogResponseData {
             id: user_data.id,
+            package: Some(user_data.package),
+            nav_url: Some(user_data.nav_url),
+            version: Some(user_data.version),
+            user: Some(user_data.user),
+            ip: Some(user_data.ip),
+            time: Some(user_data.time.format("%Y-%m-%d %H:%M:%S%.3f").to_string()),
             logs: if user_data.logs.is_empty() {
                 format!("No logs for id {}", json_data.id)
             } else {
@@ -697,6 +729,12 @@ pub async fn api_user_log(
     } else {
         Ok(HttpResponse::Ok().json(UserLogResponseData {
             id: json_data.id,
+            package: None,
+            nav_url: None,
+            version: None,
+            user: None,
+            ip: None,
+            time: None,
             logs: format!("Not found user log for id {}", json_data.id),
         }))
     }
@@ -816,8 +854,24 @@ async fn insert_log_source(
 async fn log_sources_for_content(
     app_data: &web::Data<AppState>,
     upload_log_id: i32,
-    logs: &upload_log::Model,
-) -> actix_web::Result<Vec<LogContentResponseBriefUserData>> {
+    page: i32,
+    page_size: i32,
+) -> actix_web::Result<PaginatedLogSources> {
+    let offset = ((page - 1) * page_size) as i64;
+    let total_row = app_data
+        .db_pool
+        .query_one(Statement::from_sql_and_values(
+            app_data.db_pool.get_database_backend(),
+            "SELECT COUNT(*) AS total FROM upload_log_sources WHERE upload_log_id = ?",
+            vec![upload_log_id.into()],
+        ))
+        .await
+        .map_err(map_db_err)?;
+    let total = total_row
+        .and_then(|row| row.try_get::<i64>("", "total").ok())
+        .unwrap_or_default() as i32;
+    let source_total_pages = total_pages(total, page_size);
+
     let rows = app_data
         .db_pool
         .query_all(Statement::from_sql_and_values(
@@ -826,14 +880,14 @@ async fn log_sources_for_content(
              FROM upload_log_sources
              WHERE upload_log_id = ?
              ORDER BY reported_at DESC, id DESC
-             LIMIT 1000",
-            vec![upload_log_id.into()],
+             LIMIT ? OFFSET ?",
+            vec![upload_log_id.into(), page_size.into(), offset.into()],
         ))
         .await
         .map_err(map_db_err)?;
 
-    if !rows.is_empty() {
-        return Ok(rows
+    Ok(PaginatedLogSources {
+        items: rows
             .into_iter()
             .map(|row| LogContentResponseBriefUserData {
                 id: row.try_get("", "id").unwrap_or_default(),
@@ -844,31 +898,24 @@ async fn log_sources_for_content(
                 ip: row.try_get("", "ip").unwrap_or_default(),
                 time: row.try_get::<String>("", "reported_at").unwrap_or_default(),
             })
-            .collect());
-    }
+            .collect(),
+        total,
+        total_pages: source_total_pages,
+    })
+}
 
-    let mut user_list = vec![];
-    for id in logs.user_list.split(',') {
-        let Ok(id) = id.parse::<i32>() else {
-            continue;
-        };
-        if let Some(user_data) = UploadUser::find_by_id(id)
-            .one(app_data.db_pool.as_ref())
-            .await
-            .map_err(map_db_err)?
-        {
-            user_list.push(LogContentResponseBriefUserData {
-                id: user_data.id,
-                package: user_data.package,
-                nav_url: user_data.nav_url,
-                version: user_data.version,
-                user: user_data.user,
-                ip: user_data.ip,
-                time: user_data.time.format("%m-%d %H:%M:%S").to_string(),
-            });
-        }
+struct PaginatedLogSources {
+    items: Vec<LogContentResponseBriefUserData>,
+    total: i32,
+    total_pages: i32,
+}
+
+fn total_pages(total: i32, page_size: i32) -> i32 {
+    if total <= 0 {
+        0
+    } else {
+        (total as f64 / page_size as f64).ceil() as i32
     }
-    Ok(user_list)
 }
 
 async fn user_raw_log(

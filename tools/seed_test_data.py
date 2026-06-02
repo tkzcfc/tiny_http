@@ -82,7 +82,6 @@ def create_schema(conn):
         """CREATE TABLE IF NOT EXISTS upload_log (
             id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
             hash TINYTEXT NOT NULL,
-            user_list TEXT NOT NULL,
             first_time TEXT NOT NULL,
             last_time TEXT NOT NULL,
             total_count INTEGER NOT NULL,
@@ -287,13 +286,12 @@ def seed_error_logs(conn, count, days, rng):
         resolved_user_id = 1 if item["status"] == 1 else None
         resolved_username = "fc" if item["status"] == 1 else None
         cur = conn.execute(
-            """INSERT INTO upload_log(hash, user_list, first_time, last_time, total_count, status,
+            """INSERT INTO upload_log(hash, first_time, last_time, total_count, status,
                                       resolution_time, resolved_by_user_id, resolved_by_username,
                                       updated_at, log_type, message)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 item["hash"],
-                ",".join(item["user_ids"][:120]),
                 utc_text(item["first_time"]),
                 utc_text(item["last_time"]),
                 len(item["user_ids"]),

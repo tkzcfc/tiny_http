@@ -9,8 +9,6 @@ pub struct Model {
     pub id: i32,
     #[sea_orm(column_type = "custom(\"TINYTEXT\")")]
     pub hash: String,
-    #[sea_orm(column_type = "Text")]
-    pub user_list: String,
     pub first_time: DateTime,
     pub last_time: DateTime,
     pub total_count: i32,

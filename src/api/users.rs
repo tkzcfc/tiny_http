@@ -181,6 +181,9 @@ pub async fn audit_logs(
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": if total == 0 { 0 } else { total.div_ceil(page_size) },
         "items": items,
     })))
 }

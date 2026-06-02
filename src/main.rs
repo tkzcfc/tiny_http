@@ -39,12 +39,19 @@ struct Args {
     /// Path to the built Vue admin frontend dist directory.
     #[arg(long, default_value = "./frontend/dist")]
     admin_dist_path: String,
+
+    /// Enable SQL query logging.
+    #[arg(long, default_value_t = false)]
+    sql_log: bool,
 }
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "tiny_http=info,actix_web=warn,sqlx=warn,sea_orm=warn".into()),
+        )
         .init();
 
     let args = Args::parse();
@@ -56,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
         .acquire_timeout(Duration::from_secs(8))
         .idle_timeout(Duration::from_secs(60))
         .max_lifetime(Duration::from_secs(600))
-        .sqlx_logging(true);
+        .sqlx_logging(args.sql_log);
 
     let db_pool = Database::connect(opt)
         .await
@@ -71,6 +78,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(
         listen_addr = %args.listen_addr,
         admin_dist_path = %args.admin_dist_path,
+        sql_log = args.sql_log,
         "starting server"
     );
 

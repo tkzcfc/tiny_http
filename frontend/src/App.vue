@@ -19,6 +19,7 @@ const api = async (url, options = {}) => {
 export default {
   data() {
     return {
+      authReady: false,
       me: { authenticated: false, is_admin: false },
       loginForm: { username: '', password: '' },
       active: 'logs',
@@ -28,12 +29,16 @@ export default {
       logTypes: [],
       logTypeForm: { log_type: '', display_name: '', enabled: true },
       page: 1,
+      logJumpPage: 1,
       pageSize: 20,
       logs: { items: [], total: 0, pending: 0, solved: 0, total_pages: 0 },
       sortBy: 'last_time',
       sortOrder: 'desc',
       statusFilter: 'all',
       selectedLog: null,
+      sourcePage: 1,
+      sourcePageSize: 20,
+      sourceJumpPage: 1,
       userLog: null,
       statsMode: 'errors',
       statsLogType: '',
@@ -50,13 +55,16 @@ export default {
       statsLoading: false,
       statsSourceLoading: false,
       statsRequestSeq: 0,
-      trendChartMode: 'bar',
+      trendChartMode: 'line',
       rankChartMode: 'bar',
       chartInstances: {},
       rankChartRefs: {},
       users: [],
       userForm: { id: null, username: '', password: '', role: 'user', enabled: true },
-      audit: { items: [], total: 0 },
+      audit: { items: [], total: 0, total_pages: 0 },
+      auditPage: 1,
+      auditPageSize: 50,
+      auditJumpPage: 1,
       restoringUrl: false,
     }
   },
@@ -131,10 +139,14 @@ export default {
     },
   },
   async mounted() {
-    await this.loadMe()
     window.addEventListener('popstate', this.restoreFromUrl)
     window.addEventListener('resize', this.resizeCharts)
-    if (this.me.authenticated) await this.restoreFromUrl()
+    try {
+      await this.loadMe()
+      if (this.me.authenticated) await this.restoreFromUrl()
+    } finally {
+      this.authReady = true
+    }
   },
   beforeUnmount() {
     window.removeEventListener('popstate', this.restoreFromUrl)
@@ -162,6 +174,7 @@ export default {
           method: 'POST',
           body: JSON.stringify(this.loginForm),
         })
+        this.authReady = true
         await this.restoreFromUrl()
       })
     },
@@ -188,9 +201,11 @@ export default {
         })
         if (this.logs.total_pages > 0 && this.page > this.logs.total_pages) {
           this.page = this.logs.total_pages
+          this.logJumpPage = this.page
           await this.loadLogs()
           return
         }
+        this.logJumpPage = this.page
         this.syncUrl()
       })
     },
@@ -200,6 +215,9 @@ export default {
       this.selectedLog = null
       this.userLog = null
       await this.loadLogs()
+    },
+    async jumpLogPage() {
+      await this.goLogPage(Number(this.logJumpPage || 1))
     },
     async changePageSize() {
       this.page = 1
@@ -272,15 +290,47 @@ export default {
         if (selected) await this.selectLogType(selected)
       })
     },
-    async openLog(log) {
+    async openLog(log, resetSourcePage = true) {
+      if (resetSourcePage) {
+        this.sourcePage = 1
+        this.sourceJumpPage = 1
+      }
       await this.run(async () => {
         this.selectedLog = await api('/api/log_content', {
           method: 'POST',
-          body: JSON.stringify({ hash: log.hash }),
+          body: JSON.stringify({
+            hash: log.hash,
+            source_page: this.sourcePage,
+            source_page_size: this.sourcePageSize,
+          }),
         })
+        if (this.selectedLog.source_total_pages > 0 && this.sourcePage > this.selectedLog.source_total_pages) {
+          this.sourcePage = this.selectedLog.source_total_pages
+          this.sourceJumpPage = this.sourcePage
+          await this.openLog(log, false)
+          return
+        }
+        this.sourcePage = this.selectedLog.source_page || this.sourcePage
+        this.sourcePageSize = this.selectedLog.source_page_size || this.sourcePageSize
+        this.sourceJumpPage = this.sourcePage
         this.userLog = null
         this.syncUrl()
       })
+    },
+    async goSourcePage(page) {
+      if (!this.selectedLog) return
+      const totalPages = this.selectedLog.source_total_pages || 1
+      this.sourcePage = Math.min(Math.max(page, 1), totalPages)
+      this.sourceJumpPage = this.sourcePage
+      await this.openLog(this.selectedLog, false)
+    },
+    async jumpSourcePage() {
+      await this.goSourcePage(Number(this.sourceJumpPage || 1))
+    },
+    async changeSourcePageSize() {
+      this.sourcePage = 1
+      this.sourceJumpPage = 1
+      if (this.selectedLog) await this.openLog(this.selectedLog, false)
     },
     async completeLog() {
       if (!this.selectedLog) return
@@ -289,7 +339,7 @@ export default {
           method: 'POST',
           body: JSON.stringify({ hash: this.selectedLog.hash }),
         })
-        await this.openLog(this.selectedLog)
+        await this.openLog(this.selectedLog, false)
         await this.loadLogs()
       })
     },
@@ -302,6 +352,22 @@ export default {
         })
         this.selectedLog = null
         await this.loadLogs()
+      })
+    },
+    async clearCurrentLogType() {
+      if (!this.logType || !this.me.is_admin) return
+      const name = this.logs.log_type_name || this.selectedLogTypeItem?.display_name || this.logType
+      if (!window.confirm(`确定要清空「${name}」下的所有错误日志吗？此操作不可恢复。`)) return
+      await this.run(async () => {
+        await api('/api/clear_log', {
+          method: 'POST',
+          body: JSON.stringify({ log_type: this.logType }),
+        })
+        this.selectedLog = null
+        this.userLog = null
+        this.page = 1
+        await this.loadLogs()
+        await this.loadLogTypes()
       })
     },
     async showUserLog(id) {
@@ -458,8 +524,35 @@ export default {
     },
     async loadAudit() {
       await this.run(async () => {
-        this.audit = await api('/api/admin/audit_logs?page=1&page_size=50')
+        const params = new URLSearchParams({
+          page: String(this.auditPage),
+          page_size: String(this.auditPageSize),
+        })
+        this.audit = await api(`/api/admin/audit_logs?${params.toString()}`)
+        if (this.audit.total_pages > 0 && this.auditPage > this.audit.total_pages) {
+          this.auditPage = this.audit.total_pages
+          this.auditJumpPage = this.auditPage
+          await this.loadAudit()
+          return
+        }
+        this.auditPage = this.audit.page || this.auditPage
+        this.auditPageSize = this.audit.page_size || this.auditPageSize
+        this.auditJumpPage = this.auditPage
       })
+    },
+    async goAuditPage(page) {
+      const totalPages = this.audit.total_pages || 1
+      this.auditPage = Math.min(Math.max(page, 1), totalPages)
+      this.auditJumpPage = this.auditPage
+      await this.loadAudit()
+    },
+    async jumpAuditPage() {
+      await this.goAuditPage(Number(this.auditJumpPage || 1))
+    },
+    async changeAuditPageSize() {
+      this.auditPage = 1
+      this.auditJumpPage = 1
+      await this.loadAudit()
     },
     switchTab(tab) {
       this.active = tab
@@ -597,12 +690,13 @@ export default {
       if (chart && !chart.isDisposed?.()) chart.dispose()
       delete this.chartInstances[`rank-${key}`]
     },
-    renderStatsCharts() {
-      this.$nextTick(() => {
-        if (!this.stats) return
-        if (this.$refs.trendChart) this.renderTrendChart()
-        this.statSections.forEach((section) => this.renderRankChart(section))
-      })
+    async renderStatsCharts() {
+      await this.$nextTick()
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      if (!this.stats || !this.isStatsActive) return
+      if (this.$refs.trendChart) this.renderTrendChart()
+      this.statSections.forEach((section) => this.renderRankChart(section))
+      this.resizeCharts()
     },
     getChart(key, el) {
       if (!el) return null
@@ -712,7 +806,14 @@ export default {
 </script>
 
 <template>
-  <main v-if="!me.authenticated" class="login">
+  <main v-if="!authReady" class="boot-screen">
+    <div class="boot-panel">
+      <div class="login-mark">TH</div>
+      <span>正在恢复会话</span>
+    </div>
+  </main>
+
+  <main v-else-if="!me.authenticated" class="login">
     <form class="login-panel" @submit.prevent="login">
       <div class="login-mark">TH</div>
       <h1>错误日志后台</h1>
@@ -816,6 +917,7 @@ export default {
             <div class="panel-actions">
               <button @click="backToLogTypes">返回类型</button>
               <button @click="loadLogs">刷新</button>
+              <button v-if="me.is_admin" class="danger" @click="clearCurrentLogType">清空当前类型</button>
             </div>
           </div>
 
@@ -873,6 +975,17 @@ export default {
             <button :disabled="page <= 1" @click="goLogPage(page - 1)">上一页</button>
             <button :disabled="page >= (logs.total_pages || 1)" @click="goLogPage(page + 1)">下一页</button>
             <button :disabled="page >= (logs.total_pages || 1)" @click="goLogPage(logs.total_pages || 1)">末页</button>
+            <label>
+              跳至
+              <input
+                v-model.number="logJumpPage"
+                type="number"
+                min="1"
+                :max="logs.total_pages || 1"
+                @keyup.enter="jumpLogPage"
+              />
+            </label>
+            <button @click="jumpLogPage">跳转</button>
           </div>
         </section>
 
@@ -921,7 +1034,7 @@ export default {
                   <tr><th>用户</th><th>版本</th><th>包名</th><th>IP</th><th>时间</th><th>日志</th></tr>
                 </thead>
                 <tbody>
-                  <tr v-for="user in selectedLog.user_list" :key="user.id">
+                  <tr v-for="user in selectedLog.sources" :key="user.id">
                     <td>{{ user.user }}</td>
                     <td>{{ user.version }}</td>
                     <td>{{ user.package }}</td>
@@ -931,6 +1044,32 @@ export default {
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <div class="pagination">
+              <span>共 {{ selectedLog.source_total || 0 }} 条，第 {{ sourcePage }} / {{ selectedLog.source_total_pages || 1 }} 页</span>
+              <label>
+                每页
+                <select v-model.number="sourcePageSize" @change="changeSourcePageSize">
+                  <option :value="20">20</option>
+                  <option :value="50">50</option>
+                  <option :value="100">100</option>
+                </select>
+              </label>
+              <button :disabled="sourcePage <= 1" @click="goSourcePage(1)">首页</button>
+              <button :disabled="sourcePage <= 1" @click="goSourcePage(sourcePage - 1)">上一页</button>
+              <button :disabled="sourcePage >= (selectedLog.source_total_pages || 1)" @click="goSourcePage(sourcePage + 1)">下一页</button>
+              <button :disabled="sourcePage >= (selectedLog.source_total_pages || 1)" @click="goSourcePage(selectedLog.source_total_pages || 1)">末页</button>
+              <label>
+                跳至
+                <input
+                  v-model.number="sourceJumpPage"
+                  type="number"
+                  min="1"
+                  :max="selectedLog.source_total_pages || 1"
+                  @keyup.enter="jumpSourcePage"
+                />
+              </label>
+              <button @click="jumpSourcePage">跳转</button>
             </div>
           </template>
         </section>
@@ -980,29 +1119,6 @@ export default {
             <h2>{{ isErrorStats ? '错误统计分析' : '新增用户统计' }}</h2>
             <p>{{ isErrorStats ? '错误趋势、状态与来源排行' : '通过客户端首次配置上报估算新增用户' }}</p>
           </div>
-          <div class="stats-toolbar">
-            <div class="segmented">
-              <button :class="{ active: statsRange === '7d' }" @click="changeStatsRange('7d')">7天</button>
-              <button :class="{ active: statsRange === '30d' }" @click="changeStatsRange('30d')">30天</button>
-              <button :class="{ active: statsRange === '90d' }" @click="changeStatsRange('90d')">90天</button>
-              <button :class="{ active: statsRange === '12m' }" @click="changeStatsRange('12m')">12个月</button>
-              <button :class="{ active: statsRange === 'all' }" @click="changeStatsRange('all')">全部</button>
-            </div>
-            <label class="inline-select">
-              趋势
-              <select v-model="trendChartMode">
-                <option value="bar">柱状图</option>
-                <option value="line">折线图</option>
-              </select>
-            </label>
-            <label class="inline-select">
-              分布
-              <select v-model="rankChartMode">
-                <option value="bar">条形图</option>
-                <option value="pie">环形图</option>
-              </select>
-            </label>
-          </div>
         </div>
 
         <div v-if="isErrorStats" class="stats-mode-row">
@@ -1044,10 +1160,26 @@ export default {
                   <h3>趋势</h3>
                   <p>{{ stats.granularity === 'hour' ? '按小时聚合' : stats.granularity === 'month' ? '按月聚合' : '按日聚合' }}</p>
                 </div>
-                <div class="segmented trend-granularity">
-                  <button :class="{ active: granularity === 'hour' }" @click="changeGranularity('hour')">小时</button>
-                  <button :class="{ active: granularity === 'day' }" @click="changeGranularity('day')">日</button>
-                  <button :class="{ active: granularity === 'month' }" @click="changeGranularity('month')">月</button>
+                <div class="chart-actions">
+                  <div class="segmented range-picker">
+                    <button :class="{ active: statsRange === '7d' }" @click="changeStatsRange('7d')">7天</button>
+                    <button :class="{ active: statsRange === '30d' }" @click="changeStatsRange('30d')">30天</button>
+                    <button :class="{ active: statsRange === '90d' }" @click="changeStatsRange('90d')">90天</button>
+                    <button :class="{ active: statsRange === '12m' }" @click="changeStatsRange('12m')">12个月</button>
+                    <button :class="{ active: statsRange === 'all' }" @click="changeStatsRange('all')">全部</button>
+                  </div>
+                  <div class="segmented trend-granularity">
+                    <button :class="{ active: granularity === 'hour' }" @click="changeGranularity('hour')">小时</button>
+                    <button :class="{ active: granularity === 'day' }" @click="changeGranularity('day')">日</button>
+                    <button :class="{ active: granularity === 'month' }" @click="changeGranularity('month')">月</button>
+                  </div>
+                  <label class="inline-select chart-select">
+                    图表
+                    <select v-model="trendChartMode">
+                      <option value="bar">柱状图</option>
+                      <option value="line">折线图</option>
+                    </select>
+                  </label>
                 </div>
               </div>
               <div ref="trendChart" class="echart trend-echart"></div>
@@ -1062,8 +1194,26 @@ export default {
             <div class="stats-grid">
               <div v-for="section in statSections" :key="section.key" class="rank-panel">
                 <div class="rank-head">
-                  <h3>{{ section.title }}</h3>
-                  <span>{{ section.value.length }} 项</span>
+                  <div class="rank-title">
+                    <h3>{{ section.title }}</h3>
+                    <span>{{ section.value.length }} 项</span>
+                  </div>
+                  <div class="chart-actions">
+                    <div class="segmented range-picker">
+                      <button :class="{ active: statsRange === '7d' }" @click="changeStatsRange('7d')">7天</button>
+                      <button :class="{ active: statsRange === '30d' }" @click="changeStatsRange('30d')">30天</button>
+                      <button :class="{ active: statsRange === '90d' }" @click="changeStatsRange('90d')">90天</button>
+                      <button :class="{ active: statsRange === '12m' }" @click="changeStatsRange('12m')">12个月</button>
+                      <button :class="{ active: statsRange === 'all' }" @click="changeStatsRange('all')">全部</button>
+                    </div>
+                    <label class="inline-select chart-select">
+                      图表
+                      <select v-model="rankChartMode">
+                        <option value="bar">条形图</option>
+                        <option value="pie">环形图</option>
+                      </select>
+                    </label>
+                  </div>
                 </div>
                 <div :ref="(el) => setRankChartRef(section.key, el)" class="echart rank-echart"></div>
                 <div v-if="section.value.length" class="rank-list">
@@ -1151,6 +1301,32 @@ export default {
             </tbody>
           </table>
         </div>
+        <div class="pagination">
+          <span>共 {{ audit.total }} 条，第 {{ auditPage }} / {{ audit.total_pages || 1 }} 页</span>
+          <label>
+            每页
+            <select v-model.number="auditPageSize" @change="changeAuditPageSize">
+              <option :value="50">50</option>
+              <option :value="100">100</option>
+              <option :value="200">200</option>
+            </select>
+          </label>
+          <button :disabled="auditPage <= 1" @click="goAuditPage(1)">首页</button>
+          <button :disabled="auditPage <= 1" @click="goAuditPage(auditPage - 1)">上一页</button>
+          <button :disabled="auditPage >= (audit.total_pages || 1)" @click="goAuditPage(auditPage + 1)">下一页</button>
+          <button :disabled="auditPage >= (audit.total_pages || 1)" @click="goAuditPage(audit.total_pages || 1)">末页</button>
+          <label>
+            跳至
+            <input
+              v-model.number="auditJumpPage"
+              type="number"
+              min="1"
+              :max="audit.total_pages || 1"
+              @keyup.enter="jumpAuditPage"
+            />
+          </label>
+          <button @click="jumpAuditPage">跳转</button>
+        </div>
       </section>
 
       <div v-if="active === 'settings'" class="manage-layout">
@@ -1217,6 +1393,14 @@ export default {
             </div>
             <button @click="closeUserLog">关闭</button>
           </header>
+          <div class="log-modal-meta">
+            <div><span>用户</span><b>{{ userLog.user || '无' }}</b></div>
+            <div><span>IP</span><b>{{ userLog.ip || '无' }}</b></div>
+            <div><span>时间</span><b>{{ userLog.time || '无' }}</b></div>
+            <div><span>包名</span><b>{{ userLog.package || '无' }}</b></div>
+            <div><span>页面</span><b>{{ userLog.nav_url || '无' }}</b></div>
+            <div class="wide"><span>版本</span><b>{{ userLog.version || '无' }}</b></div>
+          </div>
           <pre>{{ userLog.logs }}</pre>
         </section>
       </div>
