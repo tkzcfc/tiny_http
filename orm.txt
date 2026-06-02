@@ -1,1 +1,0 @@
-sea-orm-cli generate entity -u mysql://root:fangcheng%40123@192.168.175.129:5306/test -o src/orm_entities
