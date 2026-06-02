@@ -533,7 +533,23 @@ nav button.active {
 }
 
 .filter-metrics .metric {
+  min-height: 70px;
+  padding: 10px 12px;
   text-align: left;
+}
+
+.filter-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.filter-metrics .metric b {
+  margin-top: 3px;
+  font-size: 22px;
+}
+
+.filter-metrics .metric em {
+  margin-top: 2px;
+  white-space: nowrap;
 }
 
 .filter-metrics .metric.active {

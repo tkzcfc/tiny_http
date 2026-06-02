@@ -177,6 +177,7 @@ struct LogListResponseData {
     log_type_name: String,
     total: i32,
     pending: i32,
+    recurred: i32,
     solved: i32,
     filtered_total: i32,
     total_pages: i32,
@@ -199,6 +200,7 @@ pub async fn api_log_list(
             log_type_name: String::new(),
             total: 0,
             pending: 0,
+            recurred: 0,
             solved: 0,
             filtered_total: 0,
             total_pages: 0,
@@ -212,6 +214,9 @@ pub async fn api_log_list(
     match json_data.status_filter.as_str() {
         "pending" => {
             list_condition = list_condition.add(upload_log::Column::Status.eq(0));
+        }
+        "recurred" => {
+            list_condition = list_condition.add(upload_log::Column::Status.eq(-1));
         }
         "solved" => {
             list_condition = list_condition.add(upload_log::Column::Status.eq(1));
@@ -244,6 +249,15 @@ pub async fn api_log_list(
             Condition::all()
                 .add(base_condition.clone())
                 .add(upload_log::Column::Status.eq(1)),
+        )
+        .count(db)
+        .await
+        .map_err(map_db_err)? as i32;
+    let recurred_count = UploadLog::find()
+        .filter(
+            Condition::all()
+                .add(base_condition.clone())
+                .add(upload_log::Column::Status.eq(-1)),
         )
         .count(db)
         .await
@@ -294,6 +308,7 @@ pub async fn api_log_list(
         log_type_name,
         total: total_count,
         pending: pending_count,
+        recurred: recurred_count,
         solved: solved_count,
         filtered_total: filtered_count,
         total_pages,

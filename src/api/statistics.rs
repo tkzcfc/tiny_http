@@ -127,6 +127,22 @@ pub async fn error_stats(
     .map(|(bucket, count)| TrendPoint { bucket, count })
     .collect::<Vec<_>>();
     let total_in_range = trend.iter().map(|item| item.count).sum::<i64>();
+    let source_user_trend = query_pairs(
+        &app_data,
+        &format!(
+            "SELECT {} AS name, COUNT(DISTINCT user) AS count FROM upload_log_sources
+             WHERE reported_at >= ? AND reported_at <= ?{type_filter}
+               AND COALESCE(user, '') <> ''
+             GROUP BY name ORDER BY name",
+            time_bucket_sql("reported_at", granularity)
+        ),
+        range,
+        value_for_log_type(log_type),
+    )
+    .await?
+    .into_iter()
+    .map(|(bucket, count)| TrendPoint { bucket, count })
+    .collect::<Vec<_>>();
 
     let include_source_tops = query.include_source_tops.unwrap_or(false);
     let source_tops = if include_source_tops {
@@ -141,6 +157,7 @@ pub async fn error_stats(
         "log_type": log_type,
         "total_in_range": total_in_range,
         "trend": trend,
+        "source_user_trend": source_user_trend,
     });
 
     if let Some(source_tops) = source_tops {

@@ -55,7 +55,7 @@ export default {
       statsLoading: false,
       statsSourceLoading: false,
       statsRequestSeq: 0,
-      trendChartMode: 'line',
+      trendChartMode: 'bar',
       rankChartMode: 'bar',
       chartInstances: {},
       rankChartRefs: {},
@@ -108,7 +108,7 @@ export default {
       const sourceKeys = ['top_versions', 'top_packages', 'top_users', 'top_ips']
       return Object.entries(this.stats)
         .filter(([key, value]) => {
-          if (!Array.isArray(value) || ['trend', 'by_type', 'by_cli_type'].includes(key)) return false
+          if (!Array.isArray(value) || ['trend', 'source_user_trend', 'by_type', 'by_cli_type'].includes(key)) return false
           if (this.isErrorStats && this.errorStatsView === 'overview') return false
           if (this.isErrorStats && this.errorStatsView === 'sources') return sourceKeys.includes(key)
           if (this.isClientStats && this.clientStatsView === 'overview') return false
@@ -119,6 +119,9 @@ export default {
     trendTotal() {
       if (this.stats?.total_in_range != null) return Number(this.stats.total_in_range || 0)
       return (this.stats?.trend || []).reduce((total, item) => total + Number(item.count || 0), 0)
+    },
+    sourceUserTrendTotal() {
+      return (this.stats?.source_user_trend || []).reduce((total, item) => total + Number(item.count || 0), 0)
     },
     statsRangeLabel() {
       return {
@@ -714,13 +717,16 @@ export default {
       const chart = this.getChart('trend', this.$refs.trendChart)
       if (!chart) return
       const data = this.stats.trend || []
+      const userTrendMap = new Map((this.stats.source_user_trend || []).map((item) => [item.bucket, item.count]))
+      const hasUserTrend = this.isErrorStats && (this.stats.source_user_trend || []).length > 0
       const visibleCount = this.granularity === 'hour' ? 72 : this.granularity === 'day' ? 45 : 24
       const endValue = Math.max(data.length - 1, 0)
       const startValue = Math.max(data.length - visibleCount, 0)
       chart.setOption({
-        color: ['#0f766e'],
+        color: ['#0f766e', '#2563eb'],
         tooltip: { trigger: 'axis' },
-        grid: { left: 48, right: 24, top: 28, bottom: 56 },
+        legend: hasUserTrend ? { top: 0, right: 12, textStyle: { color: '#667789' } } : undefined,
+        grid: { left: 48, right: 24, top: hasUserTrend ? 46 : 28, bottom: 56 },
         xAxis: {
           type: 'category',
           data: data.map((item) => item.bucket),
@@ -744,14 +750,24 @@ export default {
             moveOnMouseWheel: false,
           },
         ],
-        series: [{
-          name: '数量',
-          type: this.trendChartMode,
-          smooth: this.trendChartMode === 'line',
-          data: data.map((item) => item.count),
-          barMaxWidth: 34,
-          areaStyle: this.trendChartMode === 'line' ? { opacity: 0.12 } : undefined,
-        }],
+        series: [
+          {
+            name: this.isErrorStats ? '错误数' : '数量',
+            type: this.trendChartMode,
+            smooth: this.trendChartMode === 'line',
+            data: data.map((item) => item.count),
+            barMaxWidth: 34,
+            areaStyle: this.trendChartMode === 'line' ? { opacity: 0.12 } : undefined,
+          },
+          ...(hasUserTrend ? [{
+            name: '上报用户数',
+            type: this.trendChartMode,
+            smooth: this.trendChartMode === 'line',
+            data: data.map((item) => userTrendMap.get(item.bucket) || 0),
+            barMaxWidth: 34,
+            areaStyle: this.trendChartMode === 'line' ? { opacity: 0.08 } : undefined,
+          }] : []),
+        ],
       }, true)
     },
     renderRankChart(section) {
@@ -927,6 +943,9 @@ export default {
             </button>
             <button class="metric warn" :class="{ active: statusFilter === 'pending' }" @click="setStatusFilter('pending')">
               <span>待处理</span><b>{{ logs.pending }}</b><em>只看未解决</em>
+            </button>
+            <button class="metric warn" :class="{ active: statusFilter === 'recurred' }" @click="setStatusFilter('recurred')">
+              <span>复发</span><b>{{ logs.recurred || 0 }}</b><em>只看再次出现</em>
             </button>
             <button class="metric ok" :class="{ active: statusFilter === 'solved' }" @click="setStatusFilter('solved')">
               <span>已处理</span><b>{{ logs.solved }}</b><em>只看已解决</em>
@@ -1185,7 +1204,7 @@ export default {
               <div ref="trendChart" class="echart trend-echart"></div>
               <div class="trend-summary">
                 <span>{{ stats.trend?.length || 0 }} 个时间点</span>
-                <b>{{ statsRangeLabel }} {{ trendTotal }}</b>
+                <b>{{ statsRangeLabel }} {{ trendTotal }}<template v-if="isErrorStats && stats.source_user_trend"> / 用户 {{ sourceUserTrendTotal }}</template></b>
               </div>
             </div>
 
