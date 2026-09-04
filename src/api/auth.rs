@@ -1,6 +1,6 @@
 use crate::api::{
-    clear_session_user, find_user_by_username, map_db_err, require_user, set_session_user,
-    utc_now_millis, write_audit, AppState,
+    clear_session_user, client_ip, find_user_by_username, map_db_err, require_user,
+    set_session_user, utc_now_millis, write_audit, AppState,
 };
 use crate::orm_entities::admin_user;
 use actix_session::Session;
@@ -32,37 +32,33 @@ pub async fn login(
     app_data: web::Data<AppState>,
     json_data: web::Json<LoginRequest>,
 ) -> actix_web::Result<HttpResponse> {
+    let ip = client_ip(&req);
+    if app_data.login_guard.is_blocked(&ip) {
+        write_audit(
+            &req,
+            &app_data,
+            None,
+            "login",
+            "admin_user",
+            &json_data.username,
+            "blocked",
+            "too many failed logins",
+        )
+        .await;
+        return Err(actix_web::error::ErrorTooManyRequests(
+            "too many failed logins",
+        ));
+    }
+
     let Some(user) = find_user_by_username(app_data.db_pool.as_ref(), &json_data.username)
         .await
         .map_err(map_db_err)?
     else {
-        write_audit(
-            &req,
-            &app_data,
-            None,
-            "login",
-            "admin_user",
-            &json_data.username,
-            "failed",
-            "user not found",
-        )
-        .await;
-        return Err(actix_web::error::ErrorUnauthorized("invalid credentials"));
+        return reject_login(&req, &app_data, &ip, &json_data.username, "user not found").await;
     };
 
     if !user.enabled {
-        write_audit(
-            &req,
-            &app_data,
-            None,
-            "login",
-            "admin_user",
-            &json_data.username,
-            "failed",
-            "user disabled",
-        )
-        .await;
-        return Err(actix_web::error::ErrorUnauthorized("invalid credentials"));
+        return reject_login(&req, &app_data, &ip, &json_data.username, "user disabled").await;
     }
 
     let parsed_hash = PasswordHash::new(&user.password_hash).map_err(|err| {
@@ -72,20 +68,10 @@ pub async fn login(
         .verify_password(json_data.password.as_bytes(), &parsed_hash)
         .is_err()
     {
-        write_audit(
-            &req,
-            &app_data,
-            None,
-            "login",
-            "admin_user",
-            &json_data.username,
-            "failed",
-            "bad password",
-        )
-        .await;
-        return Err(actix_web::error::ErrorUnauthorized("invalid credentials"));
+        return reject_login(&req, &app_data, &ip, &json_data.username, "bad password").await;
     }
 
+    app_data.login_guard.clear(&ip);
     set_session_user(&session, user.id)?;
     let mut model: admin_user::ActiveModel = user.clone().into_active_model();
     let now = utc_now_millis();
@@ -167,5 +153,33 @@ pub async fn me(
             role: None,
             is_admin: false,
         })),
+    }
+}
+
+async fn reject_login(
+    req: &HttpRequest,
+    app_data: &web::Data<AppState>,
+    ip: &str,
+    username: &str,
+    detail: &str,
+) -> actix_web::Result<HttpResponse> {
+    let blocked = app_data.login_guard.record_failure(ip);
+    write_audit(
+        req,
+        app_data,
+        None,
+        "login",
+        "admin_user",
+        username,
+        if blocked { "blocked" } else { "failed" },
+        detail,
+    )
+    .await;
+    if blocked {
+        Err(actix_web::error::ErrorTooManyRequests(
+            "too many failed logins",
+        ))
+    } else {
+        Err(actix_web::error::ErrorUnauthorized("invalid credentials"))
     }
 }

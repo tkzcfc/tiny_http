@@ -405,7 +405,7 @@ async fn client_breakdown_counts(
         .db_pool
         .query_all(Statement::from_sql_and_values(
             app_data.db_pool.get_database_backend(),
-            &format!(
+            format!(
                 "SELECT name AS name, SUM(count) AS count
                  FROM client_stats_breakdown_cache
                  WHERE kind = ? AND cli_type = ? AND bucket >= ? AND bucket <= ?
@@ -472,10 +472,7 @@ async fn increment_cache_row(
     values: &[&str],
 ) -> actix_web::Result<()> {
     let column_list = columns.join(", ");
-    let placeholders = std::iter::repeat("?")
-        .take(columns.len())
-        .collect::<Vec<_>>()
-        .join(", ");
+    let placeholders = std::iter::repeat_n("?", columns.len()).collect::<Vec<_>>().join(", ");
     let conflict_columns = columns.join(", ");
     let sql = format!(
         "INSERT INTO {table}({column_list}, count) VALUES ({placeholders}, 1)

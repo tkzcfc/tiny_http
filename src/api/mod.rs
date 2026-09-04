@@ -5,7 +5,13 @@ use actix_web::{web, HttpRequest};
 use chrono::{NaiveDateTime, Utc};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::Serialize;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+pub const MAX_JSON_BYTES: usize = 256 * 1024;
+const LOGIN_FAIL_LIMIT: u32 = 5;
+const LOGIN_BLOCK_DURATION: Duration = Duration::from_secs(15 * 60);
 
 pub mod auth;
 pub mod log;
@@ -18,6 +24,73 @@ const SESSION_USER_ID: &str = "user_id";
 #[derive(Clone)]
 pub struct AppState {
     pub db_pool: Arc<DatabaseConnection>,
+    pub login_guard: Arc<LoginGuard>,
+}
+
+#[derive(Default)]
+pub struct LoginGuard {
+    inner: Mutex<HashMap<String, LoginFailState>>,
+}
+
+#[derive(Default)]
+struct LoginFailState {
+    failures: u32,
+    blocked_until: Option<Instant>,
+}
+
+impl LoginGuard {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn lock_map(&self) -> std::sync::MutexGuard<'_, HashMap<String, LoginFailState>> {
+        self.inner.lock().unwrap_or_else(|err| err.into_inner())
+    }
+
+    pub fn is_blocked(&self, ip: &str) -> bool {
+        let mut map = self.lock_map();
+        let Some(state) = map.get(ip) else {
+            return false;
+        };
+        if let Some(until) = state.blocked_until {
+            if Instant::now() < until {
+                return true;
+            }
+            map.remove(ip);
+        }
+        false
+    }
+
+    /// Records a failed login. Returns true if the IP is now blocked.
+    pub fn record_failure(&self, ip: &str) -> bool {
+        let mut map = self.lock_map();
+        let state = map.entry(ip.to_string()).or_default();
+        if let Some(until) = state.blocked_until {
+            if Instant::now() < until {
+                return true;
+            }
+            state.blocked_until = None;
+            state.failures = 0;
+        }
+        state.failures = state.failures.saturating_add(1);
+        if state.failures >= LOGIN_FAIL_LIMIT {
+            state.blocked_until = Some(Instant::now() + LOGIN_BLOCK_DURATION);
+            state.failures = 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn clear(&self, ip: &str) {
+        self.lock_map().remove(ip);
+    }
+}
+
+pub fn client_ip(req: &HttpRequest) -> String {
+    req.peer_addr()
+        .map(|addr| addr.ip().to_string())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 pub fn map_db_err(err: sea_orm::DbErr) -> actix_web::Error {
@@ -100,6 +173,7 @@ pub async fn find_user_by_username(
         .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn write_audit(
     req: &HttpRequest,
     app_data: &web::Data<AppState>,
@@ -110,11 +184,7 @@ pub async fn write_audit(
     result: &str,
     detail: impl Into<String>,
 ) {
-    let ip = req
-        .connection_info()
-        .realip_remote_addr()
-        .unwrap_or("unknown")
-        .to_string();
+    let ip = client_ip(req);
     let user_agent = req
         .headers()
         .get("user-agent")
@@ -144,5 +214,42 @@ pub async fn write_audit(
 
     if let Err(err) = model.insert(app_data.db_pool.as_ref()).await {
         tracing::warn!(%err, action, target_type, target_id, "failed to write audit log");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LoginGuard;
+    use std::net::SocketAddr;
+
+    #[test]
+    fn blocks_after_five_failures() {
+        let guard = LoginGuard::new();
+        let ip = "203.0.113.10";
+        for _ in 0..4 {
+            assert!(!guard.record_failure(ip));
+            assert!(!guard.is_blocked(ip));
+        }
+        assert!(guard.record_failure(ip));
+        assert!(guard.is_blocked(ip));
+    }
+
+    #[test]
+    fn success_clears_failures() {
+        let guard = LoginGuard::new();
+        let ip = "203.0.113.11";
+        for _ in 0..4 {
+            assert!(!guard.record_failure(ip));
+        }
+        guard.clear(ip);
+        assert!(!guard.is_blocked(ip));
+        assert!(!guard.record_failure(ip));
+        assert!(!guard.is_blocked(ip));
+    }
+
+    #[test]
+    fn client_ip_uses_peer_address() {
+        let addr: SocketAddr = "198.51.100.7:4444".parse().unwrap();
+        assert_eq!(addr.ip().to_string(), "198.51.100.7");
     }
 }

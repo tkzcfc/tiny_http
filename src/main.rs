@@ -2,10 +2,11 @@ mod api;
 mod migrations;
 mod orm_entities;
 
-use crate::api::AppState;
+use crate::api::{AppState, LoginGuard, MAX_JSON_BYTES};
 use actix_files::Files;
 use actix_session::{storage::CookieSessionStore, SessionMiddleware};
 use actix_web::cookie::Key;
+use actix_web::error::JsonPayloadError;
 use actix_web::{web, App, HttpServer};
 use clap::Parser;
 use rand_core::{OsRng, RngCore};
@@ -84,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app_state = AppState {
         db_pool: Arc::new(db_pool),
+        login_guard: Arc::new(LoginGuard::new()),
     };
     let session_key = make_session_key(&args.session_key);
     let admin_dist_path = args.admin_dist_path.clone();
@@ -91,6 +93,17 @@ async fn main() -> anyhow::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(app_state.clone()))
+            .app_data(web::PayloadConfig::new(MAX_JSON_BYTES))
+            .app_data(
+                web::JsonConfig::default()
+                    .limit(MAX_JSON_BYTES)
+                    .error_handler(|err, _req| match err {
+                        JsonPayloadError::Overflow { .. } => {
+                            actix_web::error::ErrorPayloadTooLarge("payload too large")
+                        }
+                        _ => actix_web::error::ErrorBadRequest("invalid json"),
+                    }),
+            )
             .wrap(
                 SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
                     .cookie_secure(false)
